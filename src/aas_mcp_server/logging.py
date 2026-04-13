@@ -1,3 +1,11 @@
+"""
+Logging configuration for AAS MCP Server.
+
+This module provides centralized logging configuration with support
+for custom log levels and per-logger configuration (e.g., reducing
+httpx verbosity).
+"""
+
 import logging
 import os
 

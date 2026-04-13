@@ -1,3 +1,18 @@
+"""
+Command-line interface for AAS MCP Server.
+
+This module provides the main CLI entry point for running the AAS MCP server.
+It handles argument parsing, configuration loading, and server initialization.
+
+Supports multiple AAS components:
+- aas-repo: Asset Administration Shell Repository
+- submodel-repo: Submodel Repository
+- aas-registry: AAS Registry
+- submodel-registry: Submodel Registry
+
+Each component can be configured via command-line arguments or environment variables.
+"""
+
 import argparse
 import os
 from .server import build_mcp_server
@@ -58,6 +73,21 @@ COMPONENT_CONFIGS = {
 }
 
 def main() -> None:
+    """
+    Main entry point for the AAS MCP Server CLI.
+
+    Parses command-line arguments, loads component configuration,
+    builds the MCP server, and starts it with the specified transport.
+
+    The function handles:
+    - Argument parsing and validation
+    - Configuration resolution (CLI args > env vars > defaults)
+    - MCP server initialization
+    - Server execution
+
+    Exits:
+        The function runs the MCP server and does not return.
+    """
     p = argparse.ArgumentParser(
         prog=CLI_PROGRAM_NAME,
         description=CLI_DESCRIPTION

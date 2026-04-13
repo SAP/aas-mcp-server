@@ -1,3 +1,10 @@
+"""
+Resource descriptions and documentation for MCP server.
+
+This module contains text resources used for documenting the MCP server's
+capabilities and usage patterns to LLMs and users.
+"""
+
 # Environment variable for enabling writes
 ENV_VAR_ENABLE_WRITES = "AAS_MCP_ENABLE_WRITES"
 ENV_VAR_ENABLE_WRITES_VALUE = "1"

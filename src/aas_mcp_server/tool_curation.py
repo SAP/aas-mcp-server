@@ -1,3 +1,17 @@
+"""
+Tool curation for OpenAPI specifications.
+
+This module provides safety-focused transformations for OpenAPI specs before
+generating MCP tools. It implements a defense-in-depth approach:
+
+1. Allowlist filtering - Only expose explicitly approved operations
+2. Read-only by default - Block write operations unless enabled
+3. Operation ID aliasing - Rename operations to be LLM-friendly
+4. Limit parameter capping - Prevent excessive pagination requests
+
+The goal is to provide a minimal, safe, and usable API surface for LLMs.
+"""
+
 from typing import Any, Dict, Set, Tuple
 
 # OpenAPI spec structure keys

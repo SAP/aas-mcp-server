@@ -1,3 +1,11 @@
+"""
+HTTP client configuration for AAS MCP Server.
+
+This module provides functionality to build async HTTP clients with
+optional authentication (Bearer token or API key) for communicating
+with AAS backend services.
+"""
+
 import os
 import httpx
 

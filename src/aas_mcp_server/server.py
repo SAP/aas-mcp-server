@@ -1,3 +1,13 @@
+"""
+MCP server builder for AAS components.
+
+This module orchestrates the complete MCP server construction pipeline:
+1. Load and process OpenAPI specification (with filtering and overlays)
+2. Curate the spec for safe tool generation (allowlist, read-only by default)
+3. Build HTTP client with authentication
+4. Generate FastMCP server from curated OpenAPI spec
+"""
+
 from fastmcp import FastMCP
 from .openapi_loader import load_and_process_openapi
 from .http_client import build_async_client
