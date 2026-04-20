@@ -32,7 +32,7 @@ This directory contains configuration files for generating implementation-specif
 ## Files
 
 - **`config.yaml.template`** - Generic template for any AAS implementation. Start here.
-- **`basyx-config.example.yaml`** - Example configuration for Eclipse BaSyx v2.0. Reference implementation.
+- **`sap-bnac-config.example.yaml`** - Example configuration for SAP BNAC AAS Server. Reference implementation.
 - **`README.md`** - This file. Configuration documentation.
 
 ## Configuration File Structure
@@ -95,6 +95,8 @@ Configure any combination of these AAS components:
 - **`aas-registry`**: AAS Registry
 - **`submodel-registry`**: Submodel Registry
 
+Additional AAS repositories and registries (e.g., Concept Description Repository) will be supported in future releases.
+
 ## Creating Implementation Documentation
 
 Before creating a configuration, you need to document which endpoints your implementation supports:
@@ -149,29 +151,9 @@ python3 scripts/generate_implementation.py --config configs/your-config.yaml
 python3 scripts/generate_implementation.py --config configs/your-config.yaml --dry-run
 ```
 
-### 2. Step-by-Step (Advanced)
+The `generate_implementation.py` script handles the entire pipeline automatically, including filter generation and derived spec creation for all components.
 
-**Step A: Generate Filter Strings**
-```bash
-python3 scripts/generate_filters.py --config configs/your-config.yaml
-```
-This computes the intersection of your implementation with the official spec.
-
-**Step B: Generate Derived Specs**
-```bash
-# Export filter strings from step A output
-export AAS_REPO_FILTER_PATHS="<filter string>"
-export SUBMODEL_REPO_FILTER_PATHS="<filter string>"
-# ... etc
-
-# Generate derived specs
-python3 scripts/generate_derived_spec.py --component aas-repo
-python3 scripts/generate_derived_spec.py --component submodel-repo
-python3 scripts/generate_derived_spec.py --component aas-registry
-python3 scripts/generate_derived_spec.py --component submodel-registry
-```
-
-### 3. Validation
+### 2. Validation
 
 Verify derived specs are up-to-date:
 ```bash
@@ -180,17 +162,19 @@ python3 scripts/validate_derived_specs.py --config configs/your-config.yaml
 
 ## How It Works
 
+The `generate_implementation.py` script orchestrates the entire pipeline:
+
 1. **Intersection Computation**: Compares your `implementation_spec` with the `official_spec`
 2. **Path Filtering**: Applies `path_prefix` filter if specified
 3. **Overlay Application**: Applies OpenAPI Overlay transformations if provided
 4. **Derived Spec Output**: Writes filtered + customized specs to `openapi/derived/`
 
+The pipeline uses internal library modules (`generate_filters.py` and `generate_derived_spec.py`) to perform these operations.
+
 The derived specs can then be used with the MCP server:
 ```bash
 aas-mcp-server --component aas-repo --openapi openapi/derived/aas-repo-derived.yaml
 ```
-
-## Examples
 
 ### Example 1: Single Spec Per Component
 
@@ -268,12 +252,5 @@ The MCP server defaults to using **official AAS specifications** (unfiltered, fu
 
 - **Official AAS Specifications**: `openapi/` directory
 - **Overlay Examples**: `openapi/overlays/` directory
-- **BaSyx Endpoint Documentation**: `docs/basyx-*-supported-endpoints.json`
+- **Example Endpoint Documentation**: `docs/` directory
 - **Script Documentation**: See `scripts/` directory README files
-
-## Migration from Previous Versions
-
-If you have an old `basyx-config.yaml` file:
-1. Rename it to indicate it's implementation-specific (e.g., `basyx-config.example.yaml`)
-2. Create new configs based on `config.yaml.template` for your implementations
-3. Update any references in scripts or documentation

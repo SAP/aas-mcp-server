@@ -12,8 +12,8 @@ Usage:
     # Validate your implementation configuration
     python3 scripts/validate_derived_specs.py --config configs/my-implementation-config.yaml
 
-    # Validate BaSyx example configuration
-    python3 scripts/validate_derived_specs.py --config configs/basyx-config.example.yaml
+    # Validate SAP BNAC example configuration
+    python3 scripts/validate_derived_specs.py --config configs/sap-bnac-config.example.yaml
 
     # Verbose output
     python3 scripts/validate_derived_specs.py --config configs/my-config.yaml --log-level DEBUG
@@ -37,11 +37,70 @@ logging.basicConfig(
     format='%(message)s'
 )
 
-# Default configuration file path (template - users should create their own)
+# Constants - Configuration
 DEFAULT_CONFIG_PATH = "configs/config.yaml.template"
-
-# Environment variable for configuration path
 CONFIG_ENV_VAR = "AAS_IMPLEMENTATION_CONFIG"
+
+# Constants - Config keys
+CONFIG_KEY_NAME = "name"
+CONFIG_KEY_VERSION = "version"
+CONFIG_KEY_COMPONENTS = "components"
+CONFIG_KEY_OFFICIAL_SPEC = "official_spec"
+CONFIG_KEY_IMPLEMENTATION_SPEC = "implementation_spec"
+CONFIG_KEY_OVERLAY = "overlay"
+
+# Constants - Spec keys
+SPEC_KEY_PATHS = "paths"
+
+# Constants - File naming
+DERIVED_DIR = "openapi/derived"
+DERIVED_SUFFIX = "-derived.yaml"
+
+# Constants - Logging
+LOG_SEPARATOR = "=" * 80
+MSG_VALIDATION_HEADER = "DERIVED SPEC VALIDATION"
+MSG_IMPLEMENTATION = "Implementation:"
+MSG_CONFIGURATION = "Configuration:"
+MSG_NO_COMPONENTS = "No components found in configuration"
+MSG_EXPECTED_DERIVED = "Expected derived spec:"
+MSG_DERIVED_EXISTS = "Derived spec exists"
+MSG_VALID_YAML = "Derived spec is valid YAML"
+MSG_HAS_PATHS = "Derived spec has"
+MSG_OFFICIAL_SPEC_PATHS = "Official spec has"
+MSG_ALL_PATHS_VALID = "All derived paths exist in official spec"
+MSG_OVERLAY_EXISTS = "Overlay exists:"
+MSG_IMPL_SPEC_EXISTS = "Implementation spec exists:"
+MSG_VALID_COMPONENT = "Valid"
+MSG_VALIDATION_SUMMARY = "VALIDATION SUMMARY"
+MSG_TOTAL_COMPONENTS = "Total components:"
+MSG_VALID = "Valid:"
+MSG_INVALID = "Invalid:"
+MSG_REMEDIATION = "REMEDIATION"
+MSG_REMEDIATION_HINT = "To fix validation issues, regenerate the derived specs:"
+MSG_ALL_VALID = "All derived specs are valid and up-to-date!"
+
+# Constants - Error messages
+ERR_CONFIG_NOT_FOUND = "Configuration file not found:"
+ERR_DERIVED_NOT_FOUND = "Derived spec not found:"
+ERR_PARSE_FAILED = "Failed to parse derived spec:"
+ERR_NO_PATHS = "Derived spec has no paths (empty spec)"
+ERR_OFFICIAL_NOT_FOUND = "Official spec not found:"
+ERR_PARSE_OFFICIAL_FAILED = "Failed to parse official spec:"
+ERR_INVALID_PATHS = "Derived spec contains paths not in official spec:"
+ERR_OVERLAY_NOT_FOUND = "Overlay file not found:"
+ERR_IMPL_SPEC_NOT_FOUND = "Implementation spec not found:"
+
+# Constants - Argparse
+ARG_NAME_CONFIG = "--config"
+ARG_NAME_LOG_LEVEL = "--log-level"
+ARG_HELP_CONFIG = f"Path to implementation configuration file (default: {DEFAULT_CONFIG_PATH})"
+ARG_HELP_LOG_LEVEL = "Set logging level (default: INFO)"
+ARG_DEFAULT_LOG_LEVEL = "INFO"
+ARG_LOG_LEVEL_CHOICES = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Constants - Defaults
+DEFAULT_UNKNOWN = "Unknown"
+DEFAULT_VERSION_EMPTY = ""
 
 
 def load_config(config_path: str | None) -> dict[str, Any]:
@@ -50,7 +109,7 @@ def load_config(config_path: str | None) -> dict[str, Any]:
         config_path = os.getenv(CONFIG_ENV_VAR, DEFAULT_CONFIG_PATH)
 
     if not Path(config_path).exists():
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        raise FileNotFoundError(f"{ERR_CONFIG_NOT_FOUND} {config_path}")
 
     logging.debug(f"Loading configuration from: {config_path}")
     with open(config_path) as f:
@@ -63,20 +122,53 @@ def load_openapi_yaml(path: str) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_derived_spec_path(component_name: str, official_spec_path: str) -> Path:
+def check_file_exists(file_path: str | Path, error_prefix: str) -> list[str]:
+    """
+    Check if a file exists and return error message if not.
+
+    Returns:
+        Empty list if file exists, list with error message otherwise
+    """
+    if not Path(file_path).exists():
+        return [f"{error_prefix} {file_path}"]
+    return []
+
+
+def load_spec_safely(
+    file_path: str | Path,
+    error_prefix: str
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """
+    Safely load an OpenAPI spec file.
+
+    Returns:
+        Tuple of (spec dict or None, list of error messages)
+    """
+    # Check file exists
+    errors = check_file_exists(file_path, error_prefix.replace("Failed to parse", "").strip() + " not found:")
+    if errors:
+        return None, errors
+
+    # Try to parse
+    try:
+        spec = load_openapi_yaml(str(file_path))
+        return spec, []
+    except Exception as e:
+        return None, [f"{error_prefix} {e}"]
+
+
+def get_derived_spec_path(official_spec_path: str) -> Path:
     """
     Compute the expected path for a derived spec.
 
     Convention: openapi/derived/{original-filename}-derived.yaml
     """
     original_filename = Path(official_spec_path).stem
-    return Path(f"openapi/derived/{original_filename}-derived.yaml")
+    return Path(f"{DERIVED_DIR}/{original_filename}{DERIVED_SUFFIX}")
 
 
 def validate_component(
-    component_name: str,
-    component_config: dict[str, Any],
-    config_name: str
+    component_config: dict[str, Any]
 ) -> tuple[bool, list[str]]:
     """
     Validate a single component's derived spec.
@@ -87,80 +179,68 @@ def validate_component(
     issues = []
 
     # Get expected derived spec path
-    official_spec_path = component_config["official_spec"]
-    derived_spec_path = get_derived_spec_path(component_name, official_spec_path)
+    official_spec_path = component_config[CONFIG_KEY_OFFICIAL_SPEC]
+    derived_spec_path = get_derived_spec_path(official_spec_path)
 
-    logging.debug(f"  Expected derived spec: {derived_spec_path}")
+    logging.debug(f"  {MSG_EXPECTED_DERIVED} {derived_spec_path}")
 
-    # Check 1: Derived spec exists
-    if not derived_spec_path.exists():
-        issues.append(f"Derived spec not found: {derived_spec_path}")
+    # Check 1-2: Load derived spec (exists + valid YAML)
+    derived_spec, errors = load_spec_safely(derived_spec_path, ERR_PARSE_FAILED)
+    if errors:
+        issues.extend(errors)
         return False, issues
 
-    logging.debug(f"  ✓ Derived spec exists")
-
-    # Check 2: Derived spec is valid YAML
-    try:
-        derived_spec = load_openapi_yaml(str(derived_spec_path))
-    except Exception as e:
-        issues.append(f"Failed to parse derived spec: {e}")
-        return False, issues
-
-    logging.debug(f"  ✓ Derived spec is valid YAML")
+    logging.debug(f"  ✓ {MSG_DERIVED_EXISTS}")
+    logging.debug(f"  ✓ {MSG_VALID_YAML}")
 
     # Check 3: Derived spec has paths
-    derived_paths = derived_spec.get("paths", {})
+    derived_paths = derived_spec.get(SPEC_KEY_PATHS, {})
     if not derived_paths:
-        issues.append(f"Derived spec has no paths (empty spec)")
+        issues.append(ERR_NO_PATHS)
         return False, issues
 
-    logging.debug(f"  ✓ Derived spec has {len(derived_paths)} paths")
+    logging.debug(f"  ✓ {MSG_HAS_PATHS} {len(derived_paths)} paths")
 
-    # Check 4: Official spec exists and is parseable
-    if not Path(official_spec_path).exists():
-        issues.append(f"Official spec not found: {official_spec_path}")
+    # Check 4-5: Load official spec (exists + valid YAML)
+    official_spec, errors = load_spec_safely(official_spec_path, ERR_PARSE_OFFICIAL_FAILED)
+    if errors:
+        issues.extend(errors)
         return False, issues
 
-    try:
-        official_spec = load_openapi_yaml(official_spec_path)
-        official_paths = official_spec.get("paths", {})
-    except Exception as e:
-        issues.append(f"Failed to parse official spec: {e}")
-        return False, issues
+    official_paths = official_spec.get(SPEC_KEY_PATHS, {})
+    logging.debug(f"  ✓ {MSG_OFFICIAL_SPEC_PATHS} {len(official_paths)} paths")
 
-    logging.debug(f"  ✓ Official spec has {len(official_paths)} paths")
-
-    # Check 5: Derived spec is a subset of official spec
+    # Check 6: Derived spec is a subset of official spec
     derived_path_set = set(derived_paths.keys())
     official_path_set = set(official_paths.keys())
 
     invalid_paths = derived_path_set - official_path_set
     if invalid_paths:
-        issues.append(
-            f"Derived spec contains paths not in official spec: {invalid_paths}"
-        )
+        issues.append(f"{ERR_INVALID_PATHS} {invalid_paths}")
         return False, issues
 
-    logging.debug(f"  ✓ All derived paths exist in official spec")
+    logging.debug(f"  ✓ {MSG_ALL_PATHS_VALID}")
 
-    # Check 6: Overlay exists if specified
-    overlay_path = component_config.get("overlay")
+    # Check 7: Overlay exists if specified
+    overlay_path = component_config.get(CONFIG_KEY_OVERLAY)
     if overlay_path:
-        if not Path(overlay_path).exists():
-            issues.append(f"Overlay file not found: {overlay_path}")
+        overlay_errors = check_file_exists(overlay_path, ERR_OVERLAY_NOT_FOUND)
+        if overlay_errors:
+            issues.extend(overlay_errors)
         else:
-            logging.debug(f"  ✓ Overlay exists: {overlay_path}")
+            logging.debug(f"  ✓ {MSG_OVERLAY_EXISTS} {overlay_path}")
 
-    # Check 7: Implementation spec exists
-    impl_spec_path = component_config["implementation_spec"]
-    if not Path(impl_spec_path).exists():
-        issues.append(f"Implementation spec not found: {impl_spec_path}")
+    # Check 8: Implementation spec exists
+    impl_spec_path = component_config[CONFIG_KEY_IMPLEMENTATION_SPEC]
+    impl_errors = check_file_exists(impl_spec_path, ERR_IMPL_SPEC_NOT_FOUND)
+    if impl_errors:
+        issues.extend(impl_errors)
     else:
-        logging.debug(f"  ✓ Implementation spec exists: {impl_spec_path}")
+        logging.debug(f"  ✓ {MSG_IMPL_SPEC_EXISTS} {impl_spec_path}")
 
     # All checks passed
     if not issues:
-        logging.info(f"    ✅ Valid ({len(derived_paths)} paths)")
+        logging.info(f"    ✅ {MSG_VALID_COMPONENT} ({len(derived_paths)} paths)")
         return True, []
     else:
         return False, issues
@@ -173,14 +253,14 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument(
-        "--config",
-        help=f"Path to implementation configuration file (default: {DEFAULT_CONFIG_PATH})",
+        ARG_NAME_CONFIG,
+        help=ARG_HELP_CONFIG,
     )
     parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Set logging level (default: INFO)",
+        ARG_NAME_LOG_LEVEL,
+        default=ARG_DEFAULT_LOG_LEVEL,
+        choices=ARG_LOG_LEVEL_CHOICES,
+        help=ARG_HELP_LOG_LEVEL,
     )
 
     args = parser.parse_args()
@@ -196,18 +276,18 @@ def main():
         logging.error(f"❌ {e}")
         sys.exit(1)
 
-    config_name = config.get("name", "Unknown")
-    config_version = config.get("version", "")
+    config_name = config.get(CONFIG_KEY_NAME, DEFAULT_UNKNOWN)
+    config_version = config.get(CONFIG_KEY_VERSION, DEFAULT_VERSION_EMPTY)
 
-    logging.info("=" * 80)
-    logging.info(f"DERIVED SPEC VALIDATION")
-    logging.info(f"Implementation: {config_name} {config_version}")
-    logging.info(f"Configuration: {config_path}")
-    logging.info("=" * 80)
+    logging.info(LOG_SEPARATOR)
+    logging.info(MSG_VALIDATION_HEADER)
+    logging.info(f"{MSG_IMPLEMENTATION} {config_name} {config_version}")
+    logging.info(f"{MSG_CONFIGURATION} {config_path}")
+    logging.info(LOG_SEPARATOR)
 
-    components = config.get("components", {})
+    components = config.get(CONFIG_KEY_COMPONENTS, {})
     if not components:
-        logging.error("\n❌ No components found in configuration")
+        logging.error(f"\n❌ {MSG_NO_COMPONENTS}")
         sys.exit(1)
 
     # Validate each component
@@ -218,9 +298,7 @@ def main():
     for component_name, component_config in components.items():
         logging.info(f"\n  [{component_name}]")
 
-        is_valid, issues = validate_component(
-            component_name, component_config, config_name
-        )
+        is_valid, issues = validate_component(component_config)
 
         if is_valid:
             valid_count += 1
@@ -231,30 +309,27 @@ def main():
                 logging.error(f"    ❌ {issue}")
 
     # Summary
-    logging.info("\n" + "=" * 80)
-    logging.info("VALIDATION SUMMARY")
-    logging.info("=" * 80)
-    logging.info(f"Total components: {len(components)}")
-    logging.info(f"  ✅ Valid: {valid_count}")
+    logging.info(f"\n{LOG_SEPARATOR}")
+    logging.info(MSG_VALIDATION_SUMMARY)
+    logging.info(LOG_SEPARATOR)
+    logging.info(f"{MSG_TOTAL_COMPONENTS} {len(components)}")
+    logging.info(f"  ✅ {MSG_VALID} {valid_count}")
     if invalid_count > 0:
-        logging.error(f"  ❌ Invalid: {invalid_count}")
+        logging.error(f"  ❌ {MSG_INVALID} {invalid_count}")
 
     # Show remediation steps if there are issues
     if all_issues:
-        logging.info("\n" + "=" * 80)
-        logging.info("REMEDIATION")
-        logging.info("=" * 80)
-        logging.info("To fix validation issues, regenerate the derived specs:")
+        logging.info(f"\n{LOG_SEPARATOR}")
+        logging.info(MSG_REMEDIATION)
+        logging.info(LOG_SEPARATOR)
+        logging.info(MSG_REMEDIATION_HINT)
         logging.info(f"  python3 scripts/generate_implementation.py --config {config_path}")
-        logging.info("\nOr regenerate individual components:")
-        for component_name in all_issues.keys():
-            logging.info(f"  python3 scripts/generate_derived_spec.py --component {component_name}")
 
     # Exit with error code if validation failed
     if invalid_count > 0:
         sys.exit(1)
     else:
-        logging.info("\n✅ All derived specs are valid and up-to-date!")
+        logging.info(f"\n✅ {MSG_ALL_VALID}")
 
 
 if __name__ == "__main__":

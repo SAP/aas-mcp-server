@@ -110,15 +110,5 @@ components:
 
 # After Configuration:
 #
-# Generate all derived specs in one command:
+# Generate all derived specs:
 #   python3 scripts/generate_implementation.py --config configs/my-implementation-config.yaml
-#
-# Or step-by-step:
-#   1. Generate filter strings:
-#      python3 scripts/generate_filters.py --config configs/my-implementation-config.yaml
-#   2. Export the filter strings (shown in step 1 output)
-#   3. Generate derived specs for each component:
-#      python3 scripts/generate_derived_spec.py --component aas-repo
-#      python3 scripts/generate_derived_spec.py --component submodel-repo
-#      python3 scripts/generate_derived_spec.py --component aas-registry
-#      python3 scripts/generate_derived_spec.py --component submodel-registry

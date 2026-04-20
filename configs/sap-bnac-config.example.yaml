@@ -1,0 +1,60 @@
+# SAP BNAC AAS Server Configuration (EXAMPLE)
+#
+# This is an EXAMPLE configuration for SAP BNAC AAS Server.
+# It demonstrates how to configure the MCP server for a specific AAS implementation.
+#
+# To use this example:
+#   python3 scripts/generate_implementation.py --config configs/sap-bnac-config.example.yaml
+#
+# To create your own configuration:
+#   1. Copy config.yaml.template to your-config.yaml
+#   2. Customize it for your implementation
+#   3. Generate specs with your config file
+
+name: SAP BNAC AAS Server (Example)
+version: v1.0
+description: Example configuration for SAP BNAC AAS Server implementation
+
+# Component configurations
+# Each component specifies:
+#   - implementation_spec: Path to the OpenAPI spec documenting the implementation's endpoints
+#   - official_spec: Path to the official AAS OpenAPI specification
+#   - path_prefix: Optional prefix to filter paths (e.g., "/shells" for AAS repo, null for registries)
+#   - overlay: Path to OpenAPI Overlay file (optional, for renaming operations)
+#   - curation: Allowlist and aliases for tool curation (optional, used at runtime)
+
+components:
+  aas-repo:
+    implementation_spec: docs/sap-bnac-aas-repo-supported-endpoints.json
+    official_spec: openapi/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: null
+    description: Asset Administration Shell Repository
+    overlay: openapi/overlays/aas-repo-overlay.yaml
+
+    # Example curation settings
+    curation:
+      allowlist:
+        - [get, /shells]
+        - [post, /shells]
+        - [get, "/shells/{aasIdentifier}"]
+        - [put, "/shells/{aasIdentifier}"]
+        - [delete, "/shells/{aasIdentifier}"]
+      aliases:
+        GetAllAssetAdministrationShells: list_shells
+        GetAssetAdministrationShellById: get_shell
+        PostAssetAdministrationShell: create_shell
+        PutAssetAdministrationShellById: update_shell
+        DeleteAssetAdministrationShellById: delete_shell
+
+  submodel-repo:
+    implementation_spec: docs/sap-bnac-submodel-repo-supported-endpoints.json
+    official_spec: openapi/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: null
+    description: Submodel Repository
+    overlay: openapi/overlays/submodel-repo-overlay.yaml
+
+# Notes:
+# - Set path_prefix to null when the implementation spec only contains paths for that component
+# - Path prefix is used when one spec file covers multiple components (e.g., both /shells and /submodels)
+# - Overlay files are applied during derived spec generation (scripts/generate_derived_spec.py)
+# - Curation settings are applied at runtime when the MCP server starts

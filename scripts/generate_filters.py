@@ -2,9 +2,16 @@
 """
 Generate path filter strings for AAS implementation-supported endpoints.
 
+DIAGNOSTIC/ANALYSIS TOOL - For production use, run generate_implementation.py which
+orchestrates the full pipeline. This script is useful for:
+- Discovering available configurations (--list-configs)
+- Analyzing which endpoints your implementation supports (detailed intersection output)
+- Debugging filter generation in isolation
+- Understanding the intersection between official and implementation specs
+
 This script computes the intersection of:
 1. Paths in the official OpenAPI specs (AAS Repo, Submodel Repo, AAS Registry, Submodel Registry)
-2. Paths supported by a specific AAS implementation (e.g., BaSyx, FA³ST)
+2. Paths supported by a specific AAS implementation (e.g., SAP BNAC AAS Server, BaSyx, FA³ST)
 
 For each path, it takes the intersection of HTTP methods (only methods in BOTH specs).
 
@@ -17,18 +24,17 @@ Output format: Semicolon-separated path filters suitable for generate_derived_sp
 Example: /shells:get,post;/shells/{aasIdentifier}:get,put,delete
 
 Usage:
-    # Use specific configuration
+    # PRODUCTION: Use the orchestrator (recommended)
+    python3 scripts/generate_implementation.py --config configs/my-config.yaml
+
+    # DIAGNOSTIC: Analyze implementation coverage
     python3 scripts/generate_filters.py --config configs/my-implementation-config.yaml
 
-    # Use environment variable
-    export AAS_IMPLEMENTATION_CONFIG=configs/my-config.yaml
-    python3 scripts/generate_filters.py
-
-    # Use BaSyx example
-    python3 scripts/generate_filters.py --config configs/basyx-config.example.yaml
-
-    # List available configurations
+    # DIAGNOSTIC: Discover available configurations
     python3 scripts/generate_filters.py --list-configs
+
+    # DIAGNOSTIC: Debug specific implementation
+    python3 scripts/generate_filters.py --config configs/sap-bnac-config.example.yaml
 """
 
 import argparse
@@ -50,13 +56,104 @@ logging.basicConfig(
     format='%(message)s'
 )
 
-
-# Default configuration file path (template - users should create their own)
+# Constants
 DEFAULT_CONFIG_PATH = "configs/config.yaml.template"
-
-# Environment variable for configuration path
 CONFIG_ENV_VAR = "AAS_IMPLEMENTATION_CONFIG"
+CONFIGS_DIR = "configs"
 
+# OpenAPI spec constants
+SPEC_KEY_PATHS = "paths"
+SPEC_KEY_NAME = "name"
+SPEC_KEY_VERSION = "version"
+SPEC_KEY_COMPONENTS = "components"
+SPEC_KEY_IMPLEMENTATION_SPEC = "implementation_spec"
+SPEC_KEY_OFFICIAL_SPEC = "official_spec"
+SPEC_KEY_PATH_PREFIX = "path_prefix"
+
+# File extensions
+FILE_EXT_YAML = ".yaml"
+FILE_EXT_YML = ".yml"
+FILE_EXT_JSON = ".json"
+
+# HTTP methods
+HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
+
+# Filter string format
+FILTER_PATH_SEPARATOR = ";"
+FILTER_METHOD_SEPARATOR = ","
+FILTER_PATH_METHOD_SEPARATOR = ":"
+
+# Logging separators
+LOG_SEPARATOR = "=" * 80
+LOG_SEPARATOR_DASH = "-" * 80
+
+# Default values
+DEFAULT_UNKNOWN = "Unknown"
+DEFAULT_VERSION_UNKNOWN = "unknown"
+
+# Result dictionary keys
+RESULT_KEY_ENV_VAR = "env_var"
+RESULT_KEY_FILTER_STRING = "filter_string"
+RESULT_KEY_PATH_COUNT = "path_count"
+RESULT_KEY_OPERATION_COUNT = "operation_count"
+
+# String formatting
+EXPORT_CMD_PREFIX = "export"
+FILTER_PATHS_SUFFIX = "_FILTER_PATHS"
+COMPONENT_NAME_SEPARATOR = "-"
+COMPONENT_NAME_REPLACEMENT = "_"
+LOG_MSG_INTERSECTION = "Intersection"
+LOG_MSG_INTERSECTION_DETAILS = "Intersection details"
+LOG_MSG_FILTER_STRING = "Filter string for"
+LOG_MSG_FAILED_TO_PROCESS = "Failed to process"
+LOG_MSG_SUMMARY = "SUMMARY - Copy these export commands:"
+LOG_MSG_STATISTICS = "Statistics:"
+LOG_MSG_PATHS = "paths"
+LOG_MSG_OPERATIONS = "operations"
+
+# Configuration loading messages
+MSG_USING_ENV_VAR = "Using configuration from environment variable"
+MSG_USING_DEFAULT = "Using default configuration"
+MSG_LOADING_CONFIG = "Loading configuration from"
+MSG_CONFIG_NOT_FOUND = "Configuration file not found"
+MSG_CREATE_CONFIG = "Please create a configuration file or use --list-configs to see available configurations."
+MSG_CONFIG_VIA_OPTIONS = "You can set the configuration via:"
+MSG_CONFIG_CLI = "1. Command-line: --config <path>"
+MSG_CONFIG_ENV_PREFIX = "2. Environment: export"
+MSG_CONFIG_DEFAULT = "3. Default location:"
+
+# List configs messages
+MSG_NO_CONFIGS_DIR = "/ directory found."
+MSG_CREATE_CONFIGS_DIR = "/ directory with configuration files."
+MSG_SEE_EXAMPLES = "See config.yaml.template and sap-bnac-config.example.yaml for examples."
+MSG_NO_CONFIG_FILES = "No configuration files found in"
+MSG_CREATE_CONFIG_FILE = "Please create a configuration file in"
+MSG_AVAILABLE_CONFIGS = "Available configurations in"
+MSG_ERROR_READING = "(error reading:"
+MSG_DEFAULT_MARKER = " (default)"
+MSG_DEFAULT_CONFIG = "Default configuration:"
+MSG_ENV_VARIABLE = "Environment variable:"
+MSG_CURRENTLY_SET = "Currently set to:"
+MSG_NOT_SET = "Currently not set (will use default)"
+
+# Main function messages
+MSG_ANALYSIS_HEADER = "AAS IMPLEMENTATION-SUPPORTED ENDPOINTS ANALYSIS"
+MSG_IMPLEMENTATION = "Implementation:"
+
+# Argparse messages
+ARG_HELP_CONFIG = "Path to implementation configuration file (default: built-in BaSyx config)"
+ARG_HELP_LIST_CONFIGS = "List available configuration files"
+ARG_HELP_LOG_LEVEL = "Set logging level (default: INFO)"
+ARG_DEFAULT_LOG_LEVEL = "INFO"
+ARG_LOG_LEVEL_CHOICES = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Argparse argument names
+ARG_NAME_CONFIG = "--config"
+ARG_NAME_LIST_CONFIGS = "--list-configs"
+ARG_NAME_LOG_LEVEL = "--log-level"
+ARG_ATTR_CONFIG = "config"
+ARG_ATTR_LIST_CONFIGS = "list_configs"
+ARG_ATTR_LOG_LEVEL = "log_level"
 
 def load_openapi_yaml(path: str) -> dict[str, Any]:
     """Load OpenAPI spec from YAML file."""
@@ -73,9 +170,9 @@ def load_openapi_json(path: str) -> dict[str, Any]:
 def load_openapi_file(path: str) -> dict[str, Any]:
     """Load OpenAPI spec from YAML or JSON file based on extension."""
     path_obj = Path(path)
-    if path_obj.suffix in ['.yaml', '.yml']:
+    if path_obj.suffix in [FILE_EXT_YAML, FILE_EXT_YML]:
         return load_openapi_yaml(path)
-    elif path_obj.suffix == '.json':
+    elif path_obj.suffix == FILE_EXT_JSON:
         return load_openapi_json(path)
     else:
         raise ValueError(f"Unsupported file extension: {path_obj.suffix}")
@@ -89,11 +186,11 @@ def extract_paths_and_methods(spec: dict[str, Any]) -> dict[str, set[str]]:
         dict mapping path string to set of lowercase method names (e.g., {'get', 'post'})
     """
     result = {}
-    for path, operations in spec.get("paths", {}).items():
+    for path, operations in spec.get(SPEC_KEY_PATHS, {}).items():
         methods = {
             method.lower()
             for method in operations.keys()
-            if method.lower() in {"get", "post", "put", "patch", "delete"}
+            if method.lower() in HTTP_METHODS
         }
         if methods:
             result[path] = methods
@@ -129,8 +226,8 @@ def format_filter_string(paths_methods: dict[str, set[str]]) -> str:
     parts = []
     for path in sorted(paths_methods.keys()):
         methods = sorted(paths_methods[path])
-        parts.append(f"{path}:{','.join(methods)}")
-    return ";".join(parts)
+        parts.append(f"{path}{FILTER_PATH_METHOD_SEPARATOR}{FILTER_METHOD_SEPARATOR.join(methods)}")
+    return FILTER_PATH_SEPARATOR.join(parts)
 
 
 def filter_by_prefix(paths_methods: dict[str, set[str]], prefix: str | None) -> dict[str, set[str]]:
@@ -164,62 +261,62 @@ def load_config(config_path: str | None) -> dict[str, Any]:
         config_path = os.getenv(CONFIG_ENV_VAR, DEFAULT_CONFIG_PATH)
 
         if os.getenv(CONFIG_ENV_VAR):
-            logging.info(f"Using configuration from environment variable {CONFIG_ENV_VAR}")
+            logging.info(f"{MSG_USING_ENV_VAR} {CONFIG_ENV_VAR}")
         else:
-            logging.info(f"Using default configuration")
+            logging.info(MSG_USING_DEFAULT)
 
     if not Path(config_path).exists():
         raise FileNotFoundError(
-            f"Configuration file not found: {config_path}\n"
-            f"Please create a configuration file or use --list-configs to see available configurations.\n"
-            f"You can set the configuration via:\n"
-            f"  1. Command-line: --config <path>\n"
-            f"  2. Environment: export {CONFIG_ENV_VAR}=<path>\n"
-            f"  3. Default location: {DEFAULT_CONFIG_PATH}"
+            f"{MSG_CONFIG_NOT_FOUND}: {config_path}\n"
+            f"{MSG_CREATE_CONFIG}\n"
+            f"{MSG_CONFIG_VIA_OPTIONS}\n"
+            f"  {MSG_CONFIG_CLI}\n"
+            f"  {MSG_CONFIG_ENV_PREFIX} {CONFIG_ENV_VAR}=<path>\n"
+            f"  {MSG_CONFIG_DEFAULT} {DEFAULT_CONFIG_PATH}"
         )
 
-    logging.info(f"Loading configuration from: {config_path}")
+    logging.info(f"{MSG_LOADING_CONFIG}: {config_path}")
     with open(config_path) as f:
         return yaml.safe_load(f)
 
 
 def list_available_configs():
     """List available configuration files in the configs/ directory."""
-    configs_dir = Path("configs")
+    configs_dir = Path(CONFIGS_DIR)
     if not configs_dir.exists():
-        logging.error("No configs/ directory found.")
-        logging.info("\nPlease create a configs/ directory with configuration files.")
-        logging.info("See config.yaml.template and basyx-config.example.yaml for examples.")
+        logging.error(f"No {CONFIGS_DIR}{MSG_NO_CONFIGS_DIR}")
+        logging.info(f"\nPlease create a {CONFIGS_DIR}{MSG_CREATE_CONFIGS_DIR}")
+        logging.info(MSG_SEE_EXAMPLES)
         return
 
-    config_files = list(configs_dir.glob("*.yaml")) + list(configs_dir.glob("*.yml"))
+    config_files = list(configs_dir.glob(f"*{FILE_EXT_YAML}")) + list(configs_dir.glob(f"*{FILE_EXT_YML}"))
     if not config_files:
-        logging.error("No configuration files found in configs/ directory.")
-        logging.info("\nPlease create a configuration file in configs/")
-        logging.info("See config.yaml.template and basyx-config.example.yaml for examples.")
+        logging.error(f"{MSG_NO_CONFIG_FILES} {CONFIGS_DIR}/ directory.")
+        logging.info(f"\n{MSG_CREATE_CONFIG_FILE} {CONFIGS_DIR}/")
+        logging.info(MSG_SEE_EXAMPLES)
         return
 
-    logging.info("Available configurations in configs/:")
+    logging.info(f"{MSG_AVAILABLE_CONFIGS} {CONFIGS_DIR}/:")
     for config_file in sorted(config_files):
         try:
             with open(config_file) as f:
                 config = yaml.safe_load(f)
-                name = config.get('name', config_file.stem)
-                version = config.get('version', 'unknown')
+                name = config.get(SPEC_KEY_NAME, config_file.stem)
+                version = config.get(SPEC_KEY_VERSION, DEFAULT_VERSION_UNKNOWN)
                 is_default = str(config_file) == DEFAULT_CONFIG_PATH
-                default_marker = " (default)" if is_default else ""
+                default_marker = MSG_DEFAULT_MARKER if is_default else ""
                 logging.info(f"  - {config_file}: {name} {version}{default_marker}")
         except Exception as e:
-            logging.warning(f"  - {config_file}: (error reading: {e})")
+            logging.warning(f"  - {config_file}: {MSG_ERROR_READING} {e})")
 
-    logging.info(f"\nDefault configuration: {DEFAULT_CONFIG_PATH}")
-    logging.info(f"Environment variable: {CONFIG_ENV_VAR}")
+    logging.info(f"\n{MSG_DEFAULT_CONFIG} {DEFAULT_CONFIG_PATH}")
+    logging.info(f"{MSG_ENV_VARIABLE} {CONFIG_ENV_VAR}")
 
     current_env = os.getenv(CONFIG_ENV_VAR)
     if current_env:
-        logging.info(f"Currently set to: {current_env}")
+        logging.info(f"{MSG_CURRENTLY_SET} {current_env}")
     else:
-        logging.info(f"Currently not set (will use default)")
+        logging.info(MSG_NOT_SET)
 
 
 def process_component(
@@ -232,19 +329,19 @@ def process_component(
         Tuple of (intersection dict, filter string)
     """
     # Load implementation spec
-    impl_spec_path = component_config["implementation_spec"]
+    impl_spec_path = component_config[SPEC_KEY_IMPLEMENTATION_SPEC]
     logging.debug(f"  Loading implementation spec: {impl_spec_path}")
     impl_spec = load_openapi_file(impl_spec_path)
     impl_paths = extract_paths_and_methods(impl_spec)
 
     # Load official spec
-    official_spec_path = component_config["official_spec"]
+    official_spec_path = component_config[SPEC_KEY_OFFICIAL_SPEC]
     logging.debug(f"  Loading official spec: {official_spec_path}")
     official_spec = load_openapi_yaml(official_spec_path)
     official_paths = extract_paths_and_methods(official_spec)
 
     # Apply path prefix filter if specified
-    path_prefix = component_config.get("path_prefix")
+    path_prefix = component_config.get(SPEC_KEY_PATH_PREFIX)
     if path_prefix:
         impl_paths = filter_by_prefix(impl_paths, path_prefix)
         official_paths = filter_by_prefix(official_paths, path_prefix)
@@ -258,6 +355,71 @@ def process_component(
     return intersection, filter_string
 
 
+def generate_filters(config_path: str | None = None, verbose: bool = True) -> dict[str, str]:
+    """
+    Generate filter strings for all components in the configuration.
+
+    This is the main library function that can be called programmatically.
+
+    Args:
+        config_path: Path to configuration file. If None, uses environment variable or default.
+        verbose: If True, prints detailed progress information
+
+    Returns:
+        Dictionary mapping environment variable names to filter string values
+        Example: {"AAS_REPO_FILTER_PATHS": "/shells:get,post;...", ...}
+    """
+    # Load configuration
+    config = load_config(config_path)
+    config_name = config.get(SPEC_KEY_NAME, DEFAULT_UNKNOWN)
+    config_version = config.get(SPEC_KEY_VERSION, "")
+
+    if verbose:
+        logging.info(LOG_SEPARATOR)
+        logging.info(MSG_ANALYSIS_HEADER)
+        logging.info(f"{MSG_IMPLEMENTATION} {config_name} {config_version}")
+        logging.info(LOG_SEPARATOR)
+
+    # Process each component
+    results = {}
+    for component_name, component_config in config[SPEC_KEY_COMPONENTS].items():
+        if verbose:
+            logging.info(f"\n[{component_name.upper().replace(COMPONENT_NAME_SEPARATOR, ' ')}]")
+
+        try:
+            intersection, filter_string = process_component(component_config)
+
+            if verbose:
+                logging.info(f"  {LOG_MSG_INTERSECTION}: {len(intersection)} {LOG_MSG_PATHS}")
+                logging.info(f"\n  {LOG_MSG_INTERSECTION_DETAILS}:")
+                for path in sorted(intersection.keys()):
+                    methods = sorted(intersection[path])
+                    logging.info(f"    {path}: {methods}")
+
+            # Store results
+            env_var = f"{component_name.upper().replace(COMPONENT_NAME_SEPARATOR, COMPONENT_NAME_REPLACEMENT)}{FILTER_PATHS_SUFFIX}"
+            results[env_var] = filter_string
+
+            if verbose:
+                logging.info(f"\n  {LOG_MSG_FILTER_STRING} {component_name}:")
+                logging.info(f"    {EXPORT_CMD_PREFIX} {env_var}=\"{filter_string}\"")
+
+        except Exception as e:
+            logging.error(f"  {LOG_MSG_FAILED_TO_PROCESS} {component_name}: {e}")
+            continue
+
+    # Summary
+    if verbose:
+        logging.info(f"\n{LOG_SEPARATOR}")
+        logging.info(LOG_MSG_SUMMARY)
+        logging.info(LOG_SEPARATOR)
+        for env_var, filter_string in results.items():
+            logging.info(f'{EXPORT_CMD_PREFIX} {env_var}="{filter_string}"')
+        logging.info(LOG_SEPARATOR)
+
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate filter path strings for AAS implementation endpoints.",
@@ -265,83 +427,46 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument(
-        "--config",
-        help="Path to implementation configuration file (default: built-in BaSyx config)",
+        ARG_NAME_CONFIG,
+        help=ARG_HELP_CONFIG,
     )
     parser.add_argument(
-        "--list-configs",
+        ARG_NAME_LIST_CONFIGS,
         action="store_true",
-        help="List available configuration files",
+        help=ARG_HELP_LIST_CONFIGS,
     )
     parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Set logging level (default: INFO)",
+        ARG_NAME_LOG_LEVEL,
+        default=ARG_DEFAULT_LOG_LEVEL,
+        choices=ARG_LOG_LEVEL_CHOICES,
+        help=ARG_HELP_LOG_LEVEL,
     )
 
     args = parser.parse_args()
 
     # Set logging level
-    logging.getLogger().setLevel(args.log_level)
+    logging.getLogger().setLevel(getattr(args, ARG_ATTR_LOG_LEVEL))
 
     # Handle --list-configs
-    if args.list_configs:
+    if getattr(args, ARG_ATTR_LIST_CONFIGS):
         list_available_configs()
         return
 
-    # Load configuration
-    config = load_config(args.config)
-    config_name = config.get("name", "Unknown")
-    config_version = config.get("version", "")
+    # Generate filters using library function
+    results = generate_filters(
+        config_path=getattr(args, ARG_ATTR_CONFIG),
+        verbose=True
+    )
 
-    logging.info("=" * 80)
-    logging.info(f"AAS IMPLEMENTATION-SUPPORTED ENDPOINTS ANALYSIS")
-    logging.info(f"Implementation: {config_name} {config_version}")
-    logging.info("=" * 80)
-
-    # Process each component
-    results = {}
-    for component_name, component_config in config["components"].items():
-        logging.info(f"\n[{component_name.upper().replace('-', ' ')}]")
-
-        try:
-            intersection, filter_string = process_component(component_config)
-
-            logging.info(f"  Intersection: {len(intersection)} paths")
-            logging.info("\n  Intersection details:")
-            for path in sorted(intersection.keys()):
-                methods = sorted(intersection[path])
-                logging.info(f"    {path}: {methods}")
-
-            # Store results
-            env_var = f"{component_name.upper().replace('-', '_')}_FILTER_PATHS"
-            results[component_name] = {
-                "env_var": env_var,
-                "filter_string": filter_string,
-                "path_count": len(intersection),
-                "operation_count": sum(len(methods) for methods in intersection.values())
-            }
-
-            logging.info(f"\n  Filter string for {component_name}:")
-            logging.info(f"    export {env_var}=\"{filter_string}\"")
-
-        except Exception as e:
-            logging.error(f"  Failed to process {component_name}: {e}")
-            continue
-
-    # Summary
-    logging.info("\n" + "=" * 80)
-    logging.info("SUMMARY - Copy these export commands:")
-    logging.info("=" * 80)
-    for component_name, result in results.items():
-        logging.info(f'export {result["env_var"]}="{result["filter_string"]}"')
-
-    logging.info("=" * 80)
-    logging.info("\nStatistics:")
-    for component_name, result in results.items():
-        logging.info(f"  {component_name}: {result['path_count']} paths, {result['operation_count']} operations")
-    logging.info("=" * 80)
+    # Print statistics
+    logging.info(f"\n{LOG_MSG_STATISTICS}")
+    for env_var, filter_string in results.items():
+        # Count paths and operations from filter string
+        path_count = len(filter_string.split(FILTER_PATH_SEPARATOR)) if filter_string else 0
+        operation_count = filter_string.count(FILTER_METHOD_SEPARATOR) + path_count if filter_string else 0
+        component_name = env_var.replace(FILTER_PATHS_SUFFIX, "").lower().replace(COMPONENT_NAME_REPLACEMENT, COMPONENT_NAME_SEPARATOR)
+        logging.info(f"  {component_name}: {path_count} {LOG_MSG_PATHS}, {operation_count} {LOG_MSG_OPERATIONS}")
+    logging.info(LOG_SEPARATOR)
 
 
 if __name__ == "__main__":
