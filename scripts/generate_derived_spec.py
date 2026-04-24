@@ -27,8 +27,8 @@ import yaml
 from aas_mcp_server.openapi_loader import (
     load_openapi_yaml,
     filter_paths,
-    COMPONENT_FILTER_ENV_VARS,
 )
+from aas_mcp_server.constants import COMPONENT_FILTER_ENV_VARS
 from oas_patch import apply_overlay
 
 # Set up logger
@@ -51,7 +51,9 @@ LOG_STEP_PREFIX_2 = "[2/3]"
 LOG_STEP_PREFIX_3 = "[3/3]"
 LOG_INDENT = "      "
 
-# Component to OpenAPI spec mapping
+# Component to OpenAPI spec mapping (for build-time convenience when spec_path is not provided)
+# These paths are relative to project root and used as defaults during spec generation.
+# At runtime, the MCP server loads specs via config.yaml instead.
 COMPONENT_SPECS = {
     "aas-repo": f"{OPENAPI_DIR}/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
     "submodel-repo": f"{OPENAPI_DIR}/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
@@ -176,10 +178,10 @@ def _write_spec(spec: Dict[str, Any], output_path: Path) -> None:
 
 def _log_summary(spec: Dict[str, Any], output_path: Path) -> None:
     """Log summary of generated spec."""
-    logger.info(f"\n✅ Derived spec written to: {output_path}")
+    logger.info(f"\nDerived spec written to: {output_path}")
     logger.info(f"   Paths in derived spec: {len(spec.get(SPEC_KEY_PATHS, {}))}")
 
-    logger.info("\n📋 Summary of derived spec:")
+    logger.info("\nSummary of derived spec:")
     for path, operations in spec.get(SPEC_KEY_PATHS, {}).items():
         methods = [m.upper() for m in operations.keys() if m in HTTP_METHODS]
         op_ids = [

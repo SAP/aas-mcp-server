@@ -30,30 +30,20 @@ from typing import Any
 import yaml
 from oas_patch import apply_overlay
 
+from .constants import (
+    FILTER_DELIMITER,
+    METHOD_SEPARATOR,
+    PATH_FILTER_SEPARATOR,
+    FILE_ENCODING,
+    VALID_HTTP_METHODS,
+    OPENAPI_KEY_PATHS,
+    DEFAULT_OVERLAY_DIR,
+    OVERLAY_FILE_PATTERN,
+    COMPONENT_FILTER_ENV_VARS,
+)
 
-# Constants for parsing and filtering
-FILTER_DELIMITER = ":"
-METHOD_SEPARATOR = ","
-PATH_FILTER_SEPARATOR = ";"
-FILE_ENCODING = "utf-8"
-
-# HTTP methods recognized in OpenAPI specs
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
-
-# OpenAPI spec structure keys
-OPENAPI_KEY_PATHS = "paths"
-
-# Directory and file patterns
-DEFAULT_OVERLAY_DIR = "openapi/overlays"
-OVERLAY_FILE_PATTERN = "{component_name}-overlay.yaml"
-
-# Mapping of component names to their filter paths env variable names
-COMPONENT_FILTER_ENV_VARS = {
-    "aas-repo": "AAS_REPO_FILTER_PATHS",
-    "submodel-repo": "SUBMODEL_REPO_FILTER_PATHS",
-    "aas-registry": "AAS_REGISTRY_FILTER_PATHS",
-    "submodel-registry": "SUBMODEL_REGISTRY_FILTER_PATHS",
-}
+# HTTP_METHODS alias for backward compatibility in this module
+HTTP_METHODS = VALID_HTTP_METHODS
 
 
 def load_openapi_yaml(path: str) -> dict[str, Any]:

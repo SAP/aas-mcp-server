@@ -1,0 +1,17 @@
+overlay: 1.0.0
+info:
+  title: Test Overlay
+  version: 1.0.0
+actions:
+  - target: "$.paths['/shells'].get"
+    update:
+      operationId: list_shells
+      summary: List all Asset Administration Shells
+  - target: "$.paths['/shells'].post"
+    update:
+      operationId: create_shell
+      summary: Create a new Asset Administration Shell
+  - target: "$.paths['/shells/{aasIdentifier}'].get"
+    update:
+      operationId: get_shell
+      summary: Get a specific Asset Administration Shell

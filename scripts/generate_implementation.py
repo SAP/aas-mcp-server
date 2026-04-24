@@ -151,7 +151,7 @@ def generate_filter_strings_step(config_path: str, dry_run: bool) -> bool:
         # Call library function directly
         filter_strings = generate_filters(config_path=config_path, verbose=True)
 
-        logging.info(f"\n✅ {MSG_FILTER_GENERATED} {len(filter_strings)} {MSG_FILTER_STRINGS}")
+        logging.info(f"\nSUCCESS: {MSG_FILTER_GENERATED} {len(filter_strings)} {MSG_FILTER_STRINGS}")
         for env_var, value in filter_strings.items():
             logging.debug(f"  {env_var}: {value[:80]}...")
 
@@ -160,7 +160,7 @@ def generate_filter_strings_step(config_path: str, dry_run: bool) -> bool:
         return True
 
     except Exception as e:
-        logging.error(f"\n❌ Filter generation failed: {e}")
+        logging.error(f"\nERROR: Filter generation failed: {e}")
         return False
 
 
@@ -197,7 +197,7 @@ def generate_derived_specs_for_components(
                 )
                 success_count += 1
             except (FileNotFoundError, ValueError) as e:
-                logging.error(f"  ❌ {MSG_FAILED_TO_GENERATE} {e}")
+                logging.error(f"  ERROR: {MSG_FAILED_TO_GENERATE} {e}")
                 fail_count += 1
 
     return success_count, fail_count
@@ -214,14 +214,14 @@ def print_summary(
     logging.info(MSG_SUMMARY)
     logging.info(LOG_SEPARATOR)
     logging.info(f"{MSG_TOTAL_COMPONENTS} {total_components}")
-    logging.info(f"  ✅ {MSG_SUCCESSFUL} {success_count}")
+    logging.info(f"  SUCCESS: {MSG_SUCCESSFUL} {success_count}")
     if fail_count > 0:
-        logging.error(f"  ❌ {MSG_FAILED} {fail_count}")
+        logging.error(f"  ERROR: {MSG_FAILED} {fail_count}")
 
     if dry_run:
         logging.info(f"\n💡 {MSG_DRY_RUN_NOTICE}")
     else:
-        logging.info(f"\n✅ {MSG_ALL_GENERATED}")
+        logging.info(f"\nSUCCESS: {MSG_ALL_GENERATED}")
         logging.info(f"   {MSG_OUTPUT_DIR} {OUTPUT_DIR_DERIVED}")
 
 
@@ -283,7 +283,7 @@ def main():
     # Step 2: Generate derived specs
     components = config.get(CONFIG_KEY_COMPONENTS, {})
     if not components:
-        logging.error(f"❌ {MSG_NO_COMPONENTS}")
+        logging.error(f"ERROR: {MSG_NO_COMPONENTS}")
         sys.exit(1)
 
     success_count, fail_count = generate_derived_specs_for_components(

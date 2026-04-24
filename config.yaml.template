@@ -1,0 +1,114 @@
+# AAS MCP Server Configuration Template
+#
+# This file shows all configuration options for runtime use and build-time spec generation.
+# Copy this file to config.yaml and customize for your setup.
+#
+# IMPORTANT: You must provide OpenAPI specifications for your components.
+# Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
+#
+# All paths in this file are resolved relative to the config file's directory.
+
+components:
+  # ===========================================================================
+  # AAS Repository Configuration
+  # ===========================================================================
+  aas-repo:
+    # Official AAS OpenAPI spec (REQUIRED if no implementation_spec)
+    # Download from: https://github.com/admin-shell-io/aas-specs
+    official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+
+    # Implementation-specific spec (OPTIONAL)
+    # If both official + implementation specs are provided, the server will:
+    #   1. Derive intersection (only endpoints your backend supports)
+    #   2. Apply overlay if provided
+    # implementation_spec: specs/my-backend-aas-repo-endpoints.yaml
+
+    # Overlay for customizing operation names and descriptions (OPTIONAL)
+    # overlay: overlays/aas-repo-overlay.yaml
+
+    # Curation settings (OPTIONAL)
+    # Controls which operations are exposed and how they're named
+    # If omitted, uses hardcoded defaults from tool_curation.py
+    curation:
+      # Allowlist: Only these path+method combinations will be exposed
+      # Supports wildcards:
+      #   [get, *]      - All GET operations on any path
+      #   [*, /shells]  - All methods on /shells path
+      #   [*, *]        - All methods on all paths (use with caution!)
+      allowlist:
+        - [get, /shells]
+        - [post, /shells]
+        - [get, /shells/{aasIdentifier}]
+        - [put, /shells/{aasIdentifier}]
+        - [delete, /shells/{aasIdentifier}]
+        # Example wildcard: Allow all GET operations
+        # - [get, *]
+
+      # Aliases: Rename operations for better LLM understanding
+      aliases:
+        GetAllAssetAdministrationShells: list_shells
+        PostAssetAdministrationShell: create_shell
+        GetAssetAdministrationShellById: get_shell
+        PutAssetAdministrationShellById: update_shell
+        DeleteAssetAdministrationShellById: delete_shell
+
+  # ===========================================================================
+  # Submodel Repository Configuration
+  # ===========================================================================
+  submodel-repo:
+    official_spec: specs/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-submodel-repo-endpoints.yaml
+    # overlay: overlays/submodel-repo-overlay.yaml
+
+  # ===========================================================================
+  # AAS Registry Configuration
+  # ===========================================================================
+  aas-registry:
+    official_spec: specs/AssetAdministrationShellRegistryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-aas-registry-endpoints.yaml
+    # overlay: overlays/aas-registry-overlay.yaml
+
+  # ===========================================================================
+  # Submodel Registry Configuration
+  # ===========================================================================
+  submodel-registry:
+    official_spec: specs/SubmodelRegistryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-submodel-registry-endpoints.yaml
+    # overlay: overlays/submodel-registry-overlay.yaml
+
+# =============================================================================
+# Path Resolution
+# =============================================================================
+# All paths are relative to this config file's directory.
+#
+# Example directory structure:
+#   my-project/
+#     ├── config.yaml (this file)
+#     ├── specs/
+#     │   ├── AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+#     │   └── my-backend-aas-repo-endpoints.yaml
+#     └── overlays/
+#         └── aas-repo-overlay.yaml
+#
+# Then use: official_spec: specs/AssetAdministration...yaml
+#
+# For absolute paths, provide the full path:
+#   official_spec: /opt/specs/aas-repo-spec.yaml
+
+# =============================================================================
+# Usage
+# =============================================================================
+#
+# Runtime (MCP Server):
+#   aas-mcp-server --component aas-repo --base-url http://localhost:8080 --config config.yaml
+#
+# Build-Time (Generate Derived Specs):
+#   python3 scripts/generate_implementation.py --config config.yaml
+#
+# Docker:
+#   docker run \
+#     -v $(pwd)/config.yaml:/app/config/config.yaml \
+#     -v $(pwd)/specs:/app/specs \
+#     -e AAS_COMPONENT=aas-repo \
+#     -e AAS_BASE_URL=http://your-backend:8080 \
+#     -i aas-mcp-server

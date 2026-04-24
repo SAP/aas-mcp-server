@@ -13,8 +13,10 @@ from aas_mcp_server.tool_curation import (
     curate_openapi_spec,
     _cap_limit_parameter,
     DEFAULT_ALLOWLIST,
-    WRITE_METHODS,
     OPERATION_ID_ALIASES,
+)
+from aas_mcp_server.constants import (
+    WRITE_METHODS,
     DEFAULT_MAX_LIMIT,
     HTTP_METHOD_GET,
     HTTP_METHOD_POST,

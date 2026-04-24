@@ -36,7 +36,7 @@ ENABLE_WRITES="${AAS_MCP_ENABLE_WRITES:-1}"  # Default: disabled (read-only)
 
 # Check if config file exists
 if [ ! -f "$CONFIG_PATH" ]; then
-  echo "❌ Error: Configuration file not found: $CONFIG_PATH"
+  echo "ERROR Error: Configuration file not found: $CONFIG_PATH"
   echo ""
   echo "Please create a config.yaml file or set CONFIG_PATH environment variable."
   echo ""

@@ -1,0 +1,68 @@
+openapi: 3.0.3
+info:
+  title: Test AAS Repository
+  version: 1.0.0
+paths:
+  /shells:
+    get:
+      operationId: GetAllAssetAdministrationShells
+      summary: Returns all Asset Administration Shells
+      responses:
+        '200':
+          description: Success
+    post:
+      operationId: PostAssetAdministrationShell
+      summary: Creates a new Asset Administration Shell
+      responses:
+        '201':
+          description: Created
+  /shells/{aasIdentifier}:
+    get:
+      operationId: GetAssetAdministrationShellById
+      summary: Returns a specific Asset Administration Shell
+      parameters:
+        - name: aasIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+    put:
+      operationId: PutAssetAdministrationShellById
+      summary: Updates a specific Asset Administration Shell
+      parameters:
+        - name: aasIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Updated
+    delete:
+      operationId: DeleteAssetAdministrationShellById
+      summary: Deletes a specific Asset Administration Shell
+      parameters:
+        - name: aasIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+  /shells/{aasIdentifier}/asset-information:
+    get:
+      operationId: GetAssetInformation
+      summary: Returns the Asset Information
+      parameters:
+        - name: aasIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success

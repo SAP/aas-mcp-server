@@ -14,10 +14,10 @@ import httpx
 
 from aas_mcp_server.http_client import (
     build_async_client,
-    ENV_VAR_AAS_TOKEN,
-    ENV_VAR_AAS_API_KEY,
-    ENV_VAR_AAS_API_KEY_HEADER,
-    ENV_VAR_AAS_HTTP_TIMEOUT,
+    ENV_AAS_TOKEN,
+    ENV_AAS_API_KEY,
+    ENV_AAS_API_KEY_HEADER,
+    ENV_AAS_HTTP_TIMEOUT,
     DEFAULT_API_KEY_HEADER,
     DEFAULT_HTTP_TIMEOUT,
     HEADER_ACCEPT,
@@ -46,7 +46,7 @@ class TestBuildAsyncClient:
         assert HEADER_ACCEPT in client.headers
         assert client.headers[HEADER_ACCEPT] == CONTENT_TYPE_JSON
 
-    @patch.dict(os.environ, {ENV_VAR_AAS_TOKEN: "test-token-123"})
+    @patch.dict(os.environ, {ENV_AAS_TOKEN: "test-token-123"})
     def test_adds_bearer_token_when_env_var_set(self):
         """Test that Bearer token is added when AAS_TOKEN is set."""
         client = build_async_client("http://localhost:8080")
@@ -62,7 +62,7 @@ class TestBuildAsyncClient:
 
         assert HEADER_AUTHORIZATION not in client.headers
 
-    @patch.dict(os.environ, {ENV_VAR_AAS_API_KEY: "test-api-key-456"})
+    @patch.dict(os.environ, {ENV_AAS_API_KEY: "test-api-key-456"})
     def test_adds_api_key_with_default_header_name(self):
         """Test that API key is added with default header name."""
         client = build_async_client("http://localhost:8080")
@@ -73,8 +73,8 @@ class TestBuildAsyncClient:
     @patch.dict(
         os.environ,
         {
-            ENV_VAR_AAS_API_KEY: "test-api-key-789",
-            ENV_VAR_AAS_API_KEY_HEADER: "X-Custom-API-Key",
+            ENV_AAS_API_KEY: "test-api-key-789",
+            ENV_AAS_API_KEY_HEADER: "X-Custom-API-Key",
         },
     )
     def test_adds_api_key_with_custom_header_name(self):
@@ -87,8 +87,8 @@ class TestBuildAsyncClient:
     @patch.dict(
         os.environ,
         {
-            ENV_VAR_AAS_TOKEN: "token-abc",
-            ENV_VAR_AAS_API_KEY: "key-xyz",
+            ENV_AAS_TOKEN: "token-abc",
+            ENV_AAS_API_KEY: "key-xyz",
         },
     )
     def test_includes_both_token_and_api_key_when_both_set(self):
@@ -98,7 +98,7 @@ class TestBuildAsyncClient:
         assert HEADER_AUTHORIZATION in client.headers
         assert DEFAULT_API_KEY_HEADER in client.headers
 
-    @patch.dict(os.environ, {ENV_VAR_AAS_HTTP_TIMEOUT: "60.5"})
+    @patch.dict(os.environ, {ENV_AAS_HTTP_TIMEOUT: "60.5"})
     def test_uses_custom_timeout_from_env(self):
         """Test that custom timeout is used when env var is set."""
         client = build_async_client("http://localhost:8080")
@@ -139,8 +139,8 @@ class TestConstants:
 
     def test_default_timeout_is_string(self):
         """Test that default timeout is a string (for env var)."""
-        assert isinstance(DEFAULT_HTTP_TIMEOUT, str)
-        assert DEFAULT_HTTP_TIMEOUT == "30"
+        assert isinstance(DEFAULT_HTTP_TIMEOUT, int)
+        assert DEFAULT_HTTP_TIMEOUT == 30
 
     def test_content_type_json_is_correct(self):
         """Test that JSON content type is correct."""

@@ -7,7 +7,16 @@ Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enablin
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-## 🚀 Quick Start
+# AAS MCP Server
+
+> OpenAPI-to-MCP bridge for Asset Administration Shell (AAS) APIs
+
+Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enabling LLMs to interact with AAS services.
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+
+## Quick Start
 
 ### Prerequisites
 
@@ -23,11 +32,15 @@ Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enablin
    # Download from https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi
    ```
 
-2. **Create config.yaml**:
+2. **Create config.yaml** (copy from config.yaml.template):
    ```yaml
    components:
      aas-repo:
        official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+       curation:
+         allowlist:
+           - [get, "*"]  # All GET operations (wildcard)
+           - [post, /shells]
    ```
 
 3. **Run**:
@@ -45,7 +58,7 @@ Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enablin
    aas-mcp-server --component aas-repo --base-url http://localhost:8080 --config config.yaml
    ```
 
-## 📖 Configuration
+## Configuration
 
 ### Basic (Official Spec Only)
 
@@ -68,9 +81,9 @@ components:
 
 Result: Only endpoints in **both** specs are exposed (intersection).
 
-### With Curation
+### With Curation (Wildcards Supported)
 
-Control which operations are exposed:
+Control which operations are exposed using wildcards:
 
 ```yaml
 components:
@@ -78,18 +91,23 @@ components:
     official_spec: specs/aas-repo-spec.yaml
     curation:
       allowlist:
+        # Specific operations
         - [get, /shells]
         - [post, /shells]
-        # Wildcards supported:
-        - [get, "*"]              # All GET operations
-        - [*, /shells]            # All methods on /shells
+        
+        # Wildcards
+        - [get, "*"]          # All GET operations on any path
+        - ["*", /shells]      # All methods on /shells path
+        - ["*", "*"]          # All methods on all paths (use with caution!)
+        
       aliases:
         GetAllAssetAdministrationShells: list_shells
+        PostAssetAdministrationShell: create_shell
 ```
 
-See [config.yaml.example](config.yaml.example) for complete options.
+See [config.yaml.template](config.yaml.template) for complete options.
 
-## 🐳 Docker Usage
+## Docker Usage
 
 ### Basic
 
@@ -114,38 +132,32 @@ docker run \
   -i aas-mcp-server
 ```
 
-### Multiple Volume Mounts
-
-```bash
-docker run \
-  -v $(pwd)/config.yaml:/app/config/config.yaml \
-  -v $(pwd)/specs:/app/specs \
-  -v $(pwd)/overlays:/app/overlays \
-  -e AAS_COMPONENT=aas-repo \
-  -e AAS_BASE_URL=http://your-backend:8080 \
-  -i aas-mcp-server
-```
-
-## 🎯 Supported Components
+## Supported Components
 
 - `aas-repo` - Asset Administration Shell Repository
 - `submodel-repo` - Submodel Repository  
 - `aas-registry` - AAS Registry
 - `submodel-registry` - Submodel Registry
 
-## 📚 Documentation
+## Testing
 
-- [config.yaml.example](config.yaml.example) - Complete configuration template
-- [CLAUDE.md](CLAUDE.md) - Architecture guide
-- [docs/TESTING_COMPREHENSIVE.md](docs/TESTING_COMPREHENSIVE.md) - Testing guide
+Run tests:
+```bash
+# Unit tests only
+tests/run_tests.sh
 
-## 🔐 Security
+# With integration tests (requires backend on port 8081)
+tests/run_tests.sh --integration
+```
+
+## Security
 
 - **Read-only by default** - Write operations disabled unless `--enable-writes`
 - **Allowlist-based** - Only explicitly allowed operations exposed
+- **Wildcard patterns** - `[get, "*"]`, `["*", /path]`, `["*", "*"]`
 - **Pagination limits** - Max 100 items per request
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### "Configuration file not found"
 
@@ -160,6 +172,6 @@ docker run \
 - Paths in config.yaml are correct
 - Specs are mounted (Docker): `-v $(pwd)/specs:/app/specs`
 
-## 📄 License
+## License
 
 Apache License 2.0 - See [LICENSE](LICENSE)

@@ -13,11 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import yaml
 
-
-# Default config location
-DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
-# Environment variable for custom config path
-ENV_CONFIG_PATH = "CONFIG_PATH"
+from .constants import DEFAULT_CONFIG_PATH, ENV_CONFIG_PATH
 
 
 class ConfigError(Exception):

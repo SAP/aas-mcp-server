@@ -243,7 +243,7 @@ def validate_component(
 
     # All checks passed
     if not issues:
-        logging.info(f"    ✅ {MSG_VALID_COMPONENT} ({len(derived_paths)} paths)")
+        logging.info(f"    SUCCESS: {MSG_VALID_COMPONENT} ({len(derived_paths)} paths)")
         return True, []
     else:
         return False, issues
@@ -276,7 +276,7 @@ def main():
     try:
         config = load_config(config_path)
     except FileNotFoundError as e:
-        logging.error(f"❌ {e}")
+        logging.error(f"ERROR: {e}")
         sys.exit(1)
 
     config_name = config.get(CONFIG_KEY_NAME, DEFAULT_UNKNOWN)
@@ -290,7 +290,7 @@ def main():
 
     components = config.get(CONFIG_KEY_COMPONENTS, {})
     if not components:
-        logging.error(f"\n❌ {MSG_NO_COMPONENTS}")
+        logging.error(f"\nERROR: {MSG_NO_COMPONENTS}")
         sys.exit(1)
 
     # Validate each component
@@ -309,16 +309,16 @@ def main():
             invalid_count += 1
             all_issues[component_name] = issues
             for issue in issues:
-                logging.error(f"    ❌ {issue}")
+                logging.error(f"    ERROR: {issue}")
 
     # Summary
     logging.info(f"\n{LOG_SEPARATOR}")
     logging.info(MSG_VALIDATION_SUMMARY)
     logging.info(LOG_SEPARATOR)
     logging.info(f"{MSG_TOTAL_COMPONENTS} {len(components)}")
-    logging.info(f"  ✅ {MSG_VALID} {valid_count}")
+    logging.info(f"  SUCCESS: {MSG_VALID} {valid_count}")
     if invalid_count > 0:
-        logging.error(f"  ❌ {MSG_INVALID} {invalid_count}")
+        logging.error(f"  ERROR: {MSG_INVALID} {invalid_count}")
 
     # Show remediation steps if there are issues
     if all_issues:
@@ -332,7 +332,7 @@ def main():
     if invalid_count > 0:
         sys.exit(1)
     else:
-        logging.info(f"\n✅ {MSG_ALL_VALID}")
+        logging.info(f"\nSUCCESS: {MSG_ALL_VALID}")
 
 
 if __name__ == "__main__":

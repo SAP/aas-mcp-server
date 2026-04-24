@@ -17,38 +17,25 @@ The goal is to provide a minimal, safe, and usable API surface for LLMs.
 
 from typing import Any, Dict, Set, Tuple, Optional
 
-# OpenAPI spec structure keys
-OPENAPI_KEY_PATHS = "paths"
-OPENAPI_KEY_OPERATION_ID = "operationId"
-OPENAPI_KEY_PARAMETERS = "parameters"
-OPENAPI_KEY_NAME = "name"
-OPENAPI_KEY_SCHEMA = "schema"
-OPENAPI_KEY_MAXIMUM = "maximum"
-
-# Parameter names for limit capping
-PARAM_NAME_LIMIT = "limit"
-PARAM_NAME_LIMIT_CAPITALIZED = "Limit"
-
-# Default maximum limit for pagination
-DEFAULT_MAX_LIMIT = 100
-
-# HTTP methods
-HTTP_METHOD_GET = "get"
-HTTP_METHOD_POST = "post"
-HTTP_METHOD_PUT = "put"
-HTTP_METHOD_PATCH = "patch"
-HTTP_METHOD_DELETE = "delete"
+from .constants import (
+    OPENAPI_KEY_PATHS,
+    OPENAPI_KEY_OPERATION_ID,
+    OPENAPI_KEY_PARAMETERS,
+    OPENAPI_KEY_NAME,
+    OPENAPI_KEY_SCHEMA,
+    OPENAPI_KEY_MAXIMUM,
+    PARAM_NAME_LIMIT,
+    PARAM_NAME_LIMIT_CAPITALIZED,
+    DEFAULT_MAX_LIMIT,
+    HTTP_METHOD_GET,
+    WRITE_METHODS,
+    VALID_HTTP_METHODS,
+)
 
 # Minimal starter allowlist (expand as you add support)
 DEFAULT_ALLOWLIST: Set[Tuple[str, str]] = {
     (HTTP_METHOD_GET, "/shells"),
-    # (HTTP_METHOD_GET, "/shells/{aasIdentifier}"),  # example if present in your spec
 }
-
-# operations considered "writes"
-WRITE_METHODS = {HTTP_METHOD_POST, HTTP_METHOD_PUT, HTTP_METHOD_PATCH, HTTP_METHOD_DELETE}
-
-VALID_METHODS: Set[str] = {HTTP_METHOD_GET, HTTP_METHOD_POST, HTTP_METHOD_PUT, HTTP_METHOD_PATCH, HTTP_METHOD_DELETE}
 
 # Friendly aliases (optional, but strongly recommended)
 OPERATION_ID_ALIASES = {
@@ -160,7 +147,7 @@ def curate_openapi_spec(
         new_item: Dict[str, Any] = {}
         for method, op in (path_item or {}).items():
             m = method.lower()
-            if m not in VALID_METHODS:
+            if m not in VALID_HTTP_METHODS:
                 continue
 
             # 1) Allowlist filter (keeps tool surface stable, supports wildcards)

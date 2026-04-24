@@ -18,13 +18,7 @@ from .spec_processor import process_component_spec
 from .http_client import build_async_client
 from .tool_curation import curate_openapi_spec
 from .logging import configure_logging
-
-
-# Default values
-DEFAULT_LOG_LEVEL = "INFO"
-
-# Server name format
-SERVER_NAME_FORMAT = "AAS MCP Server ({component_name})"
+from .constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT
 
 
 def build_mcp_server(

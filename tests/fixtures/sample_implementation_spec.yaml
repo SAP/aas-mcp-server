@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: Implementation AAS Repository
+  version: 1.0.0
+paths:
+  /shells:
+    get:
+      responses:
+        '200':
+          description: Success
+    post:
+      responses:
+        '201':
+          description: Created
+  /shells/{aasIdentifier}:
+    get:
+      responses:
+        '200':
+          description: Success
+    put:
+      responses:
+        '204':
+          description: Updated
+    delete:
+      responses:
+        '204':
+          description: Deleted
+  # Note: /shells/{aasIdentifier}/asset-information is NOT supported in this implementation

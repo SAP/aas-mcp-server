@@ -163,10 +163,10 @@ fabric.properties
 .claude
 .playwright-mcp
 
-# Test files (keep unit tests in tests/ directory)
-test_*.py
-test_*.sh
-docker-compose.yml
+# Test files in root only (keep tests/ directory tests)
+/test_*.py
+/test_*.sh
+/docker-compose.yml
 
 # User-provided configuration and specs
 # (Users manage these themselves, not tracked in repo)

@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and aas-mcp-server contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Shared constants for AAS MCP Server.
+
+This module contains all constant values used across the codebase to avoid duplication.
+"""
+
+# ============================================================================
+# OpenAPI Spec Structure Keys
+# ============================================================================
+OPENAPI_KEY_PATHS = "paths"
+OPENAPI_KEY_OPERATION_ID = "operationId"
+OPENAPI_KEY_PARAMETERS = "parameters"
+OPENAPI_KEY_NAME = "name"
+OPENAPI_KEY_SCHEMA = "schema"
+OPENAPI_KEY_MAXIMUM = "maximum"
+
+# ============================================================================
+# HTTP Methods
+# ============================================================================
+HTTP_METHOD_GET = "get"
+HTTP_METHOD_POST = "post"
+HTTP_METHOD_PUT = "put"
+HTTP_METHOD_PATCH = "patch"
+HTTP_METHOD_DELETE = "delete"
+HTTP_METHOD_HEAD = "head"
+HTTP_METHOD_OPTIONS = "options"
+HTTP_METHOD_TRACE = "trace"
+
+# All valid HTTP methods
+VALID_HTTP_METHODS = {
+    HTTP_METHOD_GET,
+    HTTP_METHOD_POST,
+    HTTP_METHOD_PUT,
+    HTTP_METHOD_PATCH,
+    HTTP_METHOD_DELETE,
+    HTTP_METHOD_HEAD,
+    HTTP_METHOD_OPTIONS,
+    HTTP_METHOD_TRACE,
+}
+
+# Methods considered "write" operations
+WRITE_METHODS = {
+    HTTP_METHOD_POST,
+    HTTP_METHOD_PUT,
+    HTTP_METHOD_PATCH,
+    HTTP_METHOD_DELETE,
+}
+
+# ============================================================================
+# Parameter Names
+# ============================================================================
+PARAM_NAME_LIMIT = "limit"
+PARAM_NAME_LIMIT_CAPITALIZED = "Limit"
+
+# ============================================================================
+# Default Values
+# ============================================================================
+DEFAULT_MAX_LIMIT = 100  # Maximum pagination limit
+DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+ENV_CONFIG_PATH = "CONFIG_PATH"
+ENV_LOG_LEVEL = "LOG_LEVEL"
+ENV_MCP_TRANSPORT = "MCP_TRANSPORT"
+ENV_AAS_BASE_URL = "AAS_BASE_URL"
+ENV_AAS_TOKEN = "AAS_TOKEN"
+ENV_AAS_API_KEY = "AAS_API_KEY"
+ENV_AAS_API_KEY_HEADER = "AAS_API_KEY_HEADER"
+ENV_AAS_HTTP_TIMEOUT = "AAS_HTTP_TIMEOUT"
+
+# ============================================================================
+# Server Configuration
+# ============================================================================
+SERVER_NAME_FORMAT = "AAS MCP Server ({component_name})"
+DEFAULT_HTTP_TIMEOUT = 30  # seconds
+DEFAULT_API_KEY_HEADER = "X-API-Key"
+
+# ============================================================================
+# Path and Filter Delimiters (for openapi_loader)
+# ============================================================================
+FILTER_DELIMITER = ":"
+METHOD_SEPARATOR = ","
+PATH_FILTER_SEPARATOR = ";"
+
+# ============================================================================
+# File Configuration
+# ============================================================================
+FILE_ENCODING = "utf-8"
+DEFAULT_OVERLAY_DIR = "openapi/overlays"
+OVERLAY_FILE_PATTERN = "{component_name}-overlay.yaml"
+
+# ============================================================================
+# Component Filter Environment Variables
+# ============================================================================
+COMPONENT_FILTER_ENV_VARS = {
+    "aas-repo": "AAS_REPO_FILTER_PATHS",
+    "submodel-repo": "SUBMODEL_REPO_FILTER_PATHS",
+    "aas-registry": "AAS_REGISTRY_FILTER_PATHS",
+    "submodel-registry": "SUBMODEL_REGISTRY_FILTER_PATHS",
+}
