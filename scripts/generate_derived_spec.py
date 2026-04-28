@@ -35,9 +35,8 @@ from oas_patch import apply_overlay
 logger = logging.getLogger(__name__)
 
 # Constants
-OPENAPI_DIR = "openapi"
-OVERLAYS_DIR = f"{OPENAPI_DIR}/overlays"
-DERIVED_DIR = f"{OPENAPI_DIR}/derived"
+OVERLAYS_DIR = "overlays"
+DERIVED_DIR = "derived"
 OVERLAY_FILENAME_SUFFIX = "-overlay.yaml"
 DERIVED_FILENAME_SUFFIX = "-derived.yaml"
 FILTER_PATH_SEPARATOR = ";"
@@ -51,23 +50,35 @@ LOG_STEP_PREFIX_2 = "[2/3]"
 LOG_STEP_PREFIX_3 = "[3/3]"
 LOG_INDENT = "      "
 
-# Component to OpenAPI spec mapping (for build-time convenience when spec_path is not provided)
-# These paths are relative to project root and used as defaults during spec generation.
-# At runtime, the MCP server loads specs via config.yaml instead.
-COMPONENT_SPECS = {
-    "aas-repo": f"{OPENAPI_DIR}/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
-    "submodel-repo": f"{OPENAPI_DIR}/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
-    "aas-registry": f"{OPENAPI_DIR}/AssetAdministrationShellRegistryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
-    "submodel-registry": f"{OPENAPI_DIR}/SubmodelRegistryServiceSpecification-V3.1.1_SSP-001-resolved.yaml",
-}
+# Valid component names
+VALID_COMPONENTS = {"aas-repo", "submodel-repo", "aas-registry", "submodel-registry"}
 
 
 def _resolve_spec_path(component: str, spec_path: Optional[str]) -> Path:
-    """Resolve the OpenAPI spec path for a component."""
-    if component not in COMPONENT_SPECS:
-        raise ValueError(f"Unknown component: {component}. Valid: {list(COMPONENT_SPECS.keys())}")
+    """
+    Resolve the OpenAPI spec path for a component.
 
-    resolved_path = Path(spec_path or COMPONENT_SPECS[component])
+    Args:
+        component: Component name (must be one of VALID_COMPONENTS)
+        spec_path: Path to the OpenAPI spec file (required)
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        ValueError: If component is invalid or spec_path is not provided
+        FileNotFoundError: If spec file doesn't exist
+    """
+    if component not in VALID_COMPONENTS:
+        raise ValueError(f"Unknown component: {component}. Valid: {sorted(VALID_COMPONENTS)}")
+
+    if not spec_path:
+        raise ValueError(
+            f"spec_path is required. Please provide the path to the OpenAPI specification file.\n"
+            f"Download official AAS specs from: https://github.com/admin-shell-io/aas-specs"
+        )
+
+    resolved_path = Path(spec_path)
     if not resolved_path.exists():
         raise FileNotFoundError(f"Source spec not found: {resolved_path}")
 
@@ -196,22 +207,23 @@ def _log_summary(spec: Dict[str, Any], output_path: Path) -> None:
 
 def generate_derived_spec(
     component: str,
+    spec_path: str,
     filter_paths_list: Optional[List[str]] = None,
     overlay_path: Optional[Path] = None,
     output_path: Optional[Path] = None,
-    spec_path: Optional[str] = None,
     verbose: bool = True,
 ) -> Dict[str, Any]:
     """
     Generate a derived OpenAPI spec with filtering and overlay applied.
 
     Args:
-        component: Component name (e.g., "aas-repo", "submodel-repo")
+        component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry", "submodel-registry")
+        spec_path: Path to source OpenAPI spec file (required).
+                   Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
         filter_paths_list: List of path filters (e.g., ["/shells:get,post", "/shells/{aasIdentifier}:get"])
                           If None, uses environment variable for the component
-        overlay_path: Path to overlay YAML file. If None, uses default overlay for component
-        output_path: Output file path. If None, uses default: openapi/derived/{component}-derived.yaml
-        spec_path: Path to source OpenAPI spec. If None, uses default for component
+        overlay_path: Path to overlay YAML file. If None, checks default location: overlays/{component}-overlay.yaml
+        output_path: Output file path. If None, uses default: derived/{spec_filename}-derived.yaml
         verbose: Print progress messages
 
     Returns:
@@ -219,7 +231,7 @@ def generate_derived_spec(
 
     Raises:
         FileNotFoundError: If source spec file doesn't exist
-        ValueError: If component is not recognized
+        ValueError: If component is not recognized or spec_path is not provided
     """
     # Resolve all paths and parameters
     resolved_spec_path = _resolve_spec_path(component, spec_path)

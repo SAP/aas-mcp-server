@@ -9,11 +9,14 @@ The config file is REQUIRED and defines all component specifications and setting
 """
 
 import os
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 import yaml
 
 from .constants import DEFAULT_CONFIG_PATH, ENV_CONFIG_PATH
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(Exception):
@@ -142,8 +145,7 @@ class ComponentConfig:
 
         # Overlay is optional - warn but don't error
         if self.overlay and not self.overlay.exists():
-            import logging
-            logging.warning(
+            logger.warning(
                 f"Component '{self.component_name}': overlay file specified but not found: {self.overlay}"
             )
             self.overlay = None

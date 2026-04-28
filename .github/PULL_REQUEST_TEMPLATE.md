@@ -22,7 +22,6 @@
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] All new and existing tests passed
 - [ ] I have updated the documentation accordingly
-- [ ] I have added an entry to CHANGELOG.md
 - [ ] My commits follow the [Conventional Commits](https://www.conventionalcommits.org/) specification
 
 ## Testing

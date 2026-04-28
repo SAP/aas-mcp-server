@@ -44,7 +44,6 @@ Homepage = "https://github.com/SAP/aas-mcp-server"
 Documentation = "https://github.com/SAP/aas-mcp-server#readme"
 Repository = "https://github.com/SAP/aas-mcp-server"
 Issues = "https://github.com/SAP/aas-mcp-server/issues"
-Changelog = "https://github.com/SAP/aas-mcp-server/blob/main/CHANGELOG.md"
 
 [project.scripts]
 aas-mcp-server = "aas_mcp_server.cli:main"

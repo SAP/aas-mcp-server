@@ -92,7 +92,6 @@ PATH_FILTER_SEPARATOR = ";"
 # File Configuration
 # ============================================================================
 FILE_ENCODING = "utf-8"
-DEFAULT_OVERLAY_DIR = "openapi/overlays"
 OVERLAY_FILE_PATTERN = "{component_name}-overlay.yaml"
 
 # ============================================================================

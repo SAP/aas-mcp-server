@@ -54,6 +54,13 @@ def configure_logging(level: str = DEFAULT_LOG_LEVEL, transport: str = "stdio") 
         logging.getLogger(LOGGER_MCP).setLevel(log_level)
 
     # Reduce noisy logs if desired
-    httpx_log_level = os.getenv(ENV_VAR_HTTPX_LOG_LEVEL)
-    if httpx_log_level:
-        logging.getLogger(LOGGER_HTTPX).setLevel(httpx_log_level)
+    httpx_log_level_str = os.getenv(ENV_VAR_HTTPX_LOG_LEVEL)
+    if httpx_log_level_str:
+        httpx_log_level = getattr(logging, httpx_log_level_str.upper(), None)
+        if httpx_log_level is not None:
+            logging.getLogger(LOGGER_HTTPX).setLevel(httpx_log_level)
+        else:
+            logging.warning(
+                f"Invalid {ENV_VAR_HTTPX_LOG_LEVEL} value: '{httpx_log_level_str}'. "
+                f"Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )

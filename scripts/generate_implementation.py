@@ -55,6 +55,8 @@ CONFIG_ENV_VAR = "AAS_IMPLEMENTATION_CONFIG"
 CONFIG_KEY_NAME = "name"
 CONFIG_KEY_VERSION = "version"
 CONFIG_KEY_COMPONENTS = "components"
+CONFIG_KEY_OFFICIAL_SPEC = "official_spec"
+CONFIG_KEY_OVERLAY = "overlay"
 
 # Constants - Logging messages
 LOG_SEPARATOR = "=" * 80
@@ -100,7 +102,7 @@ ARG_LOG_LEVEL_CHOICES = ["DEBUG", "INFO", "WARNING", "ERROR"]
 # Constants - Defaults
 DEFAULT_UNKNOWN = "Unknown"
 DEFAULT_VERSION_EMPTY = ""
-OUTPUT_DIR_DERIVED = "openapi/derived/"
+OUTPUT_DIR_DERIVED = "derived/"
 
 def load_config(config_path: str | None) -> dict[str, Any]:
     """
@@ -121,7 +123,7 @@ def load_config(config_path: str | None) -> dict[str, Any]:
         )
 
     logging.info(f"{MSG_LOADING_CONFIG} {config_path}")
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -166,10 +168,16 @@ def generate_filter_strings_step(config_path: str, dry_run: bool) -> bool:
 
 def generate_derived_specs_for_components(
     components: dict[str, Any],
+    config_dir: Path,
     dry_run: bool
 ) -> tuple[int, int]:
     """
     Generate derived specs for all components.
+
+    Args:
+        components: Dictionary of component configurations from config file
+        config_dir: Directory containing the config file (for resolving relative paths)
+        dry_run: If True, only show what would be done
 
     Returns:
         Tuple of (success_count, fail_count)
@@ -181,18 +189,43 @@ def generate_derived_specs_for_components(
     success_count = 0
     fail_count = 0
 
-    for component_name in components.keys():
+    for component_name, component_config in components.items():
         logging.info(f"\n{LOG_SUBSEPARATOR}")
         logging.info(f"{MSG_GENERATING_SPEC} {component_name}")
         logging.info(LOG_SUBSEPARATOR)
 
+        # Get the official_spec path from config
+        official_spec = component_config.get(CONFIG_KEY_OFFICIAL_SPEC)
+        if not official_spec:
+            logging.error(f"  ERROR: {MSG_FAILED_TO_GENERATE} 'official_spec' not specified in config for {component_name}")
+            fail_count += 1
+            continue
+
+        # Resolve relative path against config directory
+        spec_path = Path(official_spec)
+        if not spec_path.is_absolute():
+            spec_path = config_dir / spec_path
+
+        # Get optional overlay path
+        overlay_path = None
+        if CONFIG_KEY_OVERLAY in component_config:
+            overlay = component_config[CONFIG_KEY_OVERLAY]
+            overlay_path = Path(overlay)
+            if not overlay_path.is_absolute():
+                overlay_path = config_dir / overlay_path
+
         if dry_run:
             logging.info(f"{MSG_DRY_RUN_WOULD_GENERATE} {component_name}")
+            logging.info(f"  spec_path: {spec_path}")
+            if overlay_path:
+                logging.info(f"  overlay_path: {overlay_path}")
             success_count += 1
         else:
             try:
                 generate_derived_spec(
                     component=component_name,
+                    spec_path=str(spec_path),
+                    overlay_path=overlay_path,
                     verbose=True
                 )
                 success_count += 1
@@ -288,6 +321,7 @@ def main():
 
     success_count, fail_count = generate_derived_specs_for_components(
         components,
+        Path(config_path).parent,
         args.dry_run
     )
 

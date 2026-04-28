@@ -18,6 +18,7 @@ import yaml
 from oas_patch import apply_overlay
 
 from .config import ComponentConfig
+from .constants import VALID_HTTP_METHODS
 
 
 logger = logging.getLogger(__name__)
@@ -50,17 +51,14 @@ def derive_spec_from_intersection(
     official_paths = official_spec.get("paths", {})
     impl_paths = implementation_spec.get("paths", {})
 
-    # DEBUG: Log all paths for comparison
     logger.debug(f"Official spec paths ({len(official_paths)}):")
     for path in sorted(official_paths.keys()):
-        methods = [m for m in official_paths[path].keys()
-                   if m in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}]
+        methods = [m for m in official_paths[path].keys() if m in VALID_HTTP_METHODS]
         logger.debug(f"  {path}: {methods}")
 
     logger.debug(f"Implementation spec paths ({len(impl_paths)}):")
     for path in sorted(impl_paths.keys()):
-        methods = [m for m in impl_paths[path].keys()
-                   if m in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}]
+        methods = [m for m in impl_paths[path].keys() if m in VALID_HTTP_METHODS]
         logger.debug(f"  {path}: {methods}")
 
     # Filter to paths that exist in both specs
@@ -77,7 +75,7 @@ def derive_spec_from_intersection(
         # For each HTTP method in official spec
         for method, operation_def in operations.items():
             # Skip non-method fields (parameters, servers, etc.)
-            if method not in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}:
+            if method not in VALID_HTTP_METHODS:
                 # Keep non-method fields
                 filtered_operations[method] = operation_def
                 continue
@@ -91,7 +89,7 @@ def derive_spec_from_intersection(
 
         # Only include path if it has at least one method
         has_methods = any(
-            key in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+            key in VALID_HTTP_METHODS
             for key in filtered_operations.keys()
         )
         if has_methods:

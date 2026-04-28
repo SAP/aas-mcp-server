@@ -7,21 +7,32 @@ Tests for server module.
 Tests the MCP server builder orchestration.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from aas_mcp_server.server import (
     build_mcp_server,
-    DEFAULT_LOG_LEVEL,
-    DEFAULT_COMPONENT_NAME,
-    SERVER_NAME_FORMAT,
 )
+from aas_mcp_server.constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT
+from aas_mcp_server.config import ComponentConfig
 
 
 class TestBuildMcpServer:
     """Tests for build_mcp_server function."""
 
+    def _create_mock_component_config(self, component_name="aas-repo"):
+        """Create a mock ComponentConfig for testing."""
+        mock_config = MagicMock(spec=ComponentConfig)
+        mock_config.component_name = component_name
+        mock_config.curation = None
+        mock_config.official_spec = Path("/app/specs/official.yaml")
+        mock_config.implementation_spec = None
+        mock_config.overlay = None
+        mock_config.has_both_specs.return_value = False
+        return mock_config
+
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -30,13 +41,16 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that configure_logging is called with provided log level."""
+        mock_process_spec.return_value = {"paths": {}}
+        mock_component_config = self._create_mock_component_config()
+
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
             log_level="DEBUG",
         )
@@ -44,7 +58,7 @@ class TestBuildMcpServer:
         mock_configure_logging.assert_called_once_with("DEBUG", transport="stdio")
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -53,65 +67,49 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that configure_logging uses default log level when not provided."""
+        mock_process_spec.return_value = {"paths": {}}
+        mock_component_config = self._create_mock_component_config()
+
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
         mock_configure_logging.assert_called_once_with(DEFAULT_LOG_LEVEL, transport="stdio")
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
-    def test_loads_openapi_spec_with_component_name(
+    def test_processes_component_spec(
         self,
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
-        """Test that load_and_process_openapi is called with correct arguments."""
-        build_mcp_server(
-            base_url="http://localhost:8080",
-            openapi_path="test.yaml",
-            enable_writes=False,
-            component_name="aas-repo",
-        )
+        """Test that process_component_spec is called with component config."""
+        mock_spec = {"paths": {}}
+        mock_process_spec.return_value = mock_spec
+        mock_component_config = self._create_mock_component_config()
 
-        mock_load_openapi.assert_called_once_with("test.yaml", "aas-repo")
-
-    @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
-    @patch("aas_mcp_server.server.curate_openapi_spec")
-    @patch("aas_mcp_server.server.build_async_client")
-    @patch("aas_mcp_server.server.FastMCP")
-    def test_loads_openapi_spec_with_default_component(
-        self,
-        mock_fastmcp,
-        mock_build_client,
-        mock_curate,
-        mock_load_openapi,
-        mock_configure_logging,
-    ):
-        """Test that load_and_process_openapi uses default component name."""
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
-        mock_load_openapi.assert_called_once_with("test.yaml", DEFAULT_COMPONENT_NAME)
+        mock_process_spec.assert_called_once_with(mock_component_config)
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -120,23 +118,24 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=False."""
         mock_spec = {"paths": {}}
-        mock_load_openapi.return_value = mock_spec
+        mock_process_spec.return_value = mock_spec
+        mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
         mock_curate.assert_called_once_with(mock_spec, enable_writes=False, curation_settings=None)
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -145,23 +144,52 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=True."""
         mock_spec = {"paths": {}}
-        mock_load_openapi.return_value = mock_spec
+        mock_process_spec.return_value = mock_spec
+        mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=True,
         )
 
         mock_curate.assert_called_once_with(mock_spec, enable_writes=True, curation_settings=None)
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    def test_curates_spec_with_curation_settings(
+        self,
+        mock_fastmcp,
+        mock_build_client,
+        mock_curate,
+        mock_process_spec,
+        mock_configure_logging,
+    ):
+        """Test that curate_openapi_spec is called with curation settings from config."""
+        mock_spec = {"paths": {}}
+        mock_process_spec.return_value = mock_spec
+        mock_component_config = self._create_mock_component_config()
+        mock_curation_settings = {"allowlist": [("get", "/shells")]}
+        mock_component_config.curation = mock_curation_settings
+
+        build_mcp_server(
+            component_config=mock_component_config,
+            base_url="http://localhost:8080",
+            enable_writes=False,
+        )
+
+        mock_curate.assert_called_once_with(mock_spec, enable_writes=False, curation_settings=mock_curation_settings)
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -170,20 +198,23 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that build_async_client is called with correct base_url."""
+        mock_process_spec.return_value = {"paths": {}}
+        mock_component_config = self._create_mock_component_config()
+
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://prod-server:9000",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
         mock_build_client.assert_called_once_with(base_url="http://prod-server:9000")
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -192,22 +223,22 @@ class TestBuildMcpServer:
         mock_fastmcp_class,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that FastMCP.from_openapi is called with curated spec."""
         mock_spec = {"paths": {}}
         mock_curated_spec = {"paths": {"/shells": {}}}
-        mock_load_openapi.return_value = mock_spec
+        mock_process_spec.return_value = mock_spec
         mock_curate.return_value = mock_curated_spec
         mock_client = MagicMock()
         mock_build_client.return_value = mock_client
+        mock_component_config = self._create_mock_component_config("aas-repo")
 
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
-            component_name="aas-repo",
         )
 
         mock_fastmcp_class.from_openapi.assert_called_once_with(
@@ -217,7 +248,7 @@ class TestBuildMcpServer:
         )
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -226,23 +257,25 @@ class TestBuildMcpServer:
         mock_fastmcp_class,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that build_mcp_server returns a FastMCP instance."""
+        mock_process_spec.return_value = {"paths": {}}
         mock_mcp_instance = MagicMock()
         mock_fastmcp_class.from_openapi.return_value = mock_mcp_instance
+        mock_component_config = self._create_mock_component_config()
 
         result = build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
         assert result == mock_mcp_instance
 
     @patch("aas_mcp_server.server.configure_logging")
-    @patch("aas_mcp_server.server.load_and_process_openapi")
+    @patch("aas_mcp_server.server.process_component_spec")
     @patch("aas_mcp_server.server.curate_openapi_spec")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
@@ -251,17 +284,18 @@ class TestBuildMcpServer:
         mock_fastmcp,
         mock_build_client,
         mock_curate,
-        mock_load_openapi,
+        mock_process_spec,
         mock_configure_logging,
     ):
         """Test that pipeline steps execute in correct order."""
         call_order = []
+        mock_component_config = self._create_mock_component_config()
 
         def track_configure_logging(*args, **kwargs):
             call_order.append("configure_logging")
 
-        def track_load_openapi(*args):
-            call_order.append("load_openapi")
+        def track_process_spec(*args):
+            call_order.append("process_spec")
             return {"paths": {}}
 
         def track_curate(*args, **kwargs):
@@ -277,20 +311,20 @@ class TestBuildMcpServer:
             return MagicMock()
 
         mock_configure_logging.side_effect = track_configure_logging
-        mock_load_openapi.side_effect = track_load_openapi
+        mock_process_spec.side_effect = track_process_spec
         mock_curate.side_effect = track_curate
         mock_build_client.side_effect = track_build_client
         mock_fastmcp.from_openapi.side_effect = track_fastmcp
 
         build_mcp_server(
+            component_config=mock_component_config,
             base_url="http://localhost:8080",
-            openapi_path="test.yaml",
             enable_writes=False,
         )
 
         assert call_order == [
             "configure_logging",
-            "load_openapi",
+            "process_spec",
             "curate",
             "build_client",
             "fastmcp",
@@ -303,10 +337,6 @@ class TestConstants:
     def test_default_log_level_is_info(self):
         """Test that default log level is INFO."""
         assert DEFAULT_LOG_LEVEL == "INFO"
-
-    def test_default_component_name_is_aas_repo(self):
-        """Test that default component name is aas-repo."""
-        assert DEFAULT_COMPONENT_NAME == "aas-repo"
 
     def test_server_name_format_has_placeholder(self):
         """Test that server name format has component_name placeholder."""

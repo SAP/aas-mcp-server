@@ -16,6 +16,7 @@ The goal is to provide a minimal, safe, and usable API surface for LLMs.
 """
 
 from typing import Any, Dict, Set, Tuple, Optional
+import logging
 
 from .constants import (
     OPENAPI_KEY_PATHS,
@@ -109,7 +110,6 @@ def curate_openapi_spec(
     Returns:
         Curated OpenAPI specification
     """
-    import logging
     logger = logging.getLogger(__name__)
 
     logger.info(f"=== Starting curation (enable_writes={enable_writes}) ===")

@@ -207,7 +207,6 @@ If you have questions about contributing:
 ## Recognition
 
 Contributors will be acknowledged in:
-- CHANGELOG.md for their contributions
 - GitHub's contributor graph
 - Release notes for significant contributions
 

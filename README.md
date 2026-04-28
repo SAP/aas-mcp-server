@@ -7,15 +7,6 @@ Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enablin
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-# AAS MCP Server
-
-> OpenAPI-to-MCP bridge for Asset Administration Shell (AAS) APIs
-
-Converts OpenAPI specifications into Model Context Protocol (MCP) tools, enabling LLMs to interact with AAS services.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-
 ## Quick Start
 
 ### Prerequisites

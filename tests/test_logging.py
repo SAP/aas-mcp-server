@@ -104,7 +104,7 @@ class TestConfigureLogging:
 
         # httpx logger should be retrieved and set when env var is present
         mock_get_logger.assert_called_with(LOGGER_HTTPX)
-        mock_httpx_logger.setLevel.assert_called_with("WARNING")
+        mock_httpx_logger.setLevel.assert_called_with(logging.WARNING)
 
     @patch("logging.basicConfig")
     def test_accepts_lowercase_log_levels(self, mock_basic_config):

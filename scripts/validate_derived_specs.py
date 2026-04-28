@@ -56,7 +56,6 @@ CONFIG_KEY_OVERLAY = "overlay"
 SPEC_KEY_PATHS = "paths"
 
 # Constants - File naming
-DERIVED_DIR = "openapi/derived"
 DERIVED_SUFFIX = "-derived.yaml"
 
 # Constants - Logging
@@ -115,13 +114,13 @@ def load_config(config_path: str | None) -> dict[str, Any]:
         raise FileNotFoundError(f"{ERR_CONFIG_NOT_FOUND} {config_path}")
 
     logging.debug(f"Loading configuration from: {config_path}")
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def load_openapi_yaml(path: str) -> dict[str, Any]:
     """Load OpenAPI spec from YAML file."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -160,21 +159,27 @@ def load_spec_safely(
         return None, [f"{error_prefix} {e}"]
 
 
-def get_derived_spec_path(official_spec_path: str) -> Path:
+def get_derived_spec_path(official_spec_path: str, config_dir: Path) -> Path:
     """
     Compute the expected path for a derived spec.
 
-    Convention: openapi/derived/{original-filename}-derived.yaml
+    Convention: {config_dir}/derived/{original-filename}-derived.yaml
+    The derived directory is relative to the config file location.
     """
     original_filename = Path(official_spec_path).stem
-    return Path(f"{DERIVED_DIR}/{original_filename}{DERIVED_SUFFIX}")
+    return config_dir / "derived" / f"{original_filename}{DERIVED_SUFFIX}"
 
 
 def validate_component(
-    component_config: dict[str, Any]
+    component_config: dict[str, Any],
+    config_dir: Path
 ) -> tuple[bool, list[str]]:
     """
     Validate a single component's derived spec.
+
+    Args:
+        component_config: Component configuration from config file
+        config_dir: Directory containing the config file (for resolving relative paths)
 
     Returns:
         Tuple of (is_valid: bool, issues: list[str])
@@ -183,7 +188,7 @@ def validate_component(
 
     # Get expected derived spec path
     official_spec_path = component_config[CONFIG_KEY_OFFICIAL_SPEC]
-    derived_spec_path = get_derived_spec_path(official_spec_path)
+    derived_spec_path = get_derived_spec_path(official_spec_path, config_dir)
 
     logging.debug(f"  {MSG_EXPECTED_DERIVED} {derived_spec_path}")
 
@@ -233,13 +238,14 @@ def validate_component(
         else:
             logging.debug(f"  ✓ {MSG_OVERLAY_EXISTS} {overlay_path}")
 
-    # Check 8: Implementation spec exists
-    impl_spec_path = component_config[CONFIG_KEY_IMPLEMENTATION_SPEC]
-    impl_errors = check_file_exists(impl_spec_path, ERR_IMPL_SPEC_NOT_FOUND)
-    if impl_errors:
-        issues.extend(impl_errors)
-    else:
-        logging.debug(f"  ✓ {MSG_IMPL_SPEC_EXISTS} {impl_spec_path}")
+    # Check 8: Implementation spec exists (optional - only check if specified)
+    impl_spec_path = component_config.get(CONFIG_KEY_IMPLEMENTATION_SPEC)
+    if impl_spec_path:
+        impl_errors = check_file_exists(impl_spec_path, ERR_IMPL_SPEC_NOT_FOUND)
+        if impl_errors:
+            issues.extend(impl_errors)
+        else:
+            logging.debug(f"  ✓ {MSG_IMPL_SPEC_EXISTS} {impl_spec_path}")
 
     # All checks passed
     if not issues:
@@ -298,10 +304,12 @@ def main():
     invalid_count = 0
     all_issues = {}
 
+    config_dir = Path(config_path).parent
+
     for component_name, component_config in components.items():
         logging.info(f"\n  [{component_name}]")
 
-        is_valid, issues = validate_component(component_config)
+        is_valid, issues = validate_component(component_config, config_dir)
 
         if is_valid:
             valid_count += 1

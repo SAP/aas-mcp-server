@@ -11,12 +11,7 @@ repository = "https://github.com/SAP/aas-mcp-server"
 path = [
     "README.md",
     "CONTRIBUTING.md",
-    "CHANGELOG.md",
-    "SECURITY.md",
     "CLAUDE.md",
-    "QUICKSTART.md",
-    "TESTING.md",
-    "SAP_COMPLIANCE_FINAL.md",
     "pyproject.toml",
     "uv.lock",
     ".gitignore",

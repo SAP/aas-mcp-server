@@ -183,3 +183,7 @@ impl-specs/
 
 *.DS_Store
 **/.DS_Store
+
+# Screenshots and temp files from local testing
+*.png
+*.jpg

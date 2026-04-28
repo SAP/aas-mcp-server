@@ -160,13 +160,13 @@ ARG_ATTR_LOG_LEVEL = "log_level"
 
 def load_openapi_yaml(path: str) -> dict[str, Any]:
     """Load OpenAPI spec from YAML file."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def load_openapi_json(path: str) -> dict[str, Any]:
     """Load OpenAPI spec from JSON file."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -279,7 +279,7 @@ def load_config(config_path: str | None) -> dict[str, Any]:
         )
 
     logging.info(f"{MSG_LOADING_CONFIG}: {config_path}")
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -302,7 +302,7 @@ def list_available_configs():
     logging.info(f"{MSG_AVAILABLE_CONFIGS} {CONFIGS_DIR}/:")
     for config_file in sorted(config_files):
         try:
-            with open(config_file) as f:
+            with open(config_file, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 name = config.get(SPEC_KEY_NAME, config_file.stem)
                 version = config.get(SPEC_KEY_VERSION, DEFAULT_VERSION_UNKNOWN)

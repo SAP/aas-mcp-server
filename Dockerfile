@@ -14,11 +14,10 @@ ENV MCP_TRANSPORT=stdio
 # MCP servers over stdio need unbuffered output
 ENV PYTHONUNBUFFERED=1
 
-# Default environment variables (can be overridden)
+# Default component (can be overridden via -e AAS_COMPONENT=...)
 ENV AAS_COMPONENT=aas-repo
-ENV AAS_BASE_URL=http://host.docker.internal:8081
-
-# Set working directory to /app
-WORKDIR /app
+# AAS_BASE_URL must be provided at runtime, e.g.:
+#   docker run -e AAS_BASE_URL=http://your-backend:8080 ...
+# There is no safe default — omitting it causes a clear startup error.
 
 CMD ["sh", "-c", "aas-mcp-server --component ${AAS_COMPONENT} --base-url ${AAS_BASE_URL}"]

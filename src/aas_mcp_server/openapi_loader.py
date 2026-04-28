@@ -19,7 +19,8 @@ Path Filter Format:
     Examples:
         AAS_REPO_FILTER_PATHS="/shells:get,post;/shells/{aasIdentifier}:get,put,delete"
 
-Overlay files are expected at: openapi/overlays/{component}-overlay.yaml
+Overlay files are expected at: {overlay_base_dir}/{component}-overlay.yaml
+The overlay_base_dir is provided via configuration or function arguments.
 """
 
 import os
@@ -37,7 +38,6 @@ from .constants import (
     FILE_ENCODING,
     VALID_HTTP_METHODS,
     OPENAPI_KEY_PATHS,
-    DEFAULT_OVERLAY_DIR,
     OVERLAY_FILE_PATTERN,
     COMPONENT_FILTER_ENV_VARS,
 )
@@ -205,7 +205,7 @@ def filter_paths(spec: dict[str, Any], include_filters: list[str]) -> dict[str, 
     return result
 
 
-def get_overlay_path(component_name: str, base_dir: str = DEFAULT_OVERLAY_DIR) -> Path | None:
+def get_overlay_path(component_name: str, base_dir: str) -> Path | None:
     """
     Get the overlay file path for a component if it exists.
 
@@ -213,7 +213,7 @@ def get_overlay_path(component_name: str, base_dir: str = DEFAULT_OVERLAY_DIR) -
 
     Args:
         component_name: Name of the component (e.g., 'aas-repo')
-        base_dir: Base directory for overlay files
+        base_dir: Base directory for overlay files (required)
 
     Returns:
         Path to overlay file if it exists, None otherwise
@@ -266,7 +266,7 @@ def get_filter_paths_from_env(component_name: str) -> list[str] | None:
 def load_and_process_openapi(
     openapi_path: str,
     component_name: str,
-    overlay_base_dir: str = DEFAULT_OVERLAY_DIR,
+    overlay_base_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Load OpenAPI spec with optional filtering and overlay application.
@@ -279,7 +279,7 @@ def load_and_process_openapi(
     Args:
         openapi_path: Path to the OpenAPI spec file
         component_name: Name of the component (e.g., 'aas-repo')
-        overlay_base_dir: Base directory for overlay files
+        overlay_base_dir: Base directory for overlay files (optional, no overlay if not provided)
 
     Returns:
         Processed OpenAPI specification dict
@@ -292,10 +292,11 @@ def load_and_process_openapi(
     if filter_paths_list:
         spec = filter_paths(spec, filter_paths_list)
 
-    # Step 3: Apply overlay if it exists
-    overlay_path = get_overlay_path(component_name, overlay_base_dir)
-    if overlay_path:
-        overlay = load_openapi_yaml(str(overlay_path))
-        spec = apply_overlay(spec, overlay)
+    # Step 3: Apply overlay if base_dir is provided and overlay exists
+    if overlay_base_dir:
+        overlay_path = get_overlay_path(component_name, overlay_base_dir)
+        if overlay_path:
+            overlay = load_openapi_yaml(str(overlay_path))
+            spec = apply_overlay(spec, overlay)
 
     return spec
