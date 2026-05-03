@@ -98,6 +98,75 @@ components:
 
 See [config.yaml.template](config.yaml.template) for complete options.
 
+## MCP Client Configuration
+
+The same `aas-mcp-server` binary works with all MCP-compatible clients — the server
+logic is identical, only the config format differs per client. Full examples for all
+clients are available in [client_config_examples.txt](client_config_examples.txt).
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+See [claude_desktop_config.example.json](claude_desktop_config.example.json) for
+the full four-component example.
+
+```json
+{
+  "mcpServers": {
+    "aas-repo": {
+      "command": "aas-mcp-server",
+      "args": [
+        "--component", "aas-repo",
+        "--base-url", "http://localhost:8080",
+        "--config", "/path/to/your/config.yaml"
+      ],
+      "env": { "LOG_LEVEL": "INFO" }
+    }
+  }
+}
+```
+
+### Claude CLI (Claude Code)
+
+```bash
+claude mcp add aas-repo \
+  --env LOG_LEVEL=INFO \
+  -- aas-mcp-server \
+     --component aas-repo \
+     --base-url http://localhost:8080 \
+     --config /path/to/your/config.yaml
+```
+
+Scope options: `--scope local` (default, current project), `--scope user` (all projects),
+`--scope project` (shared with team via `.mcp.json`).
+
+### OpenCode
+
+Add to `opencode.json` in your project root:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "aas-repo": {
+      "type": "local",
+      "command": [
+        "aas-mcp-server",
+        "--component", "aas-repo",
+        "--base-url", "http://localhost:8080",
+        "--config", "/path/to/your/config.yaml"
+      ],
+      "enabled": true,
+      "environment": { "LOG_LEVEL": "INFO" }
+    }
+  }
+}
+```
+
+See [client_config_examples.txt](client_config_examples.txt) for all four components,
+authentication setup, and write-mode configuration for every client.
+
 ## Docker Usage
 
 ### Basic
