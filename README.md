@@ -217,6 +217,18 @@ tests/run_tests.sh --integration
 - **Wildcard patterns** - `[get, "*"]`, `["*", /path]`, `["*", "*"]`
 - **Pagination limits** - Max 100 items per request
 
+## How It Works
+
+When the server starts, it processes the OpenAPI specification through a pipeline before handing it to FastMCP:
+
+1. **Load** — reads the spec file and applies any overlay (rename, add descriptions, etc.)
+2. **Flatten** — resolves `$ref` inheritance chains and merges `allOf` compositions into flat schemas. This is necessary because the official IDTA AAS spec uses multi-level `allOf` + `$ref` inheritance (e.g. `AssetAdministrationShell` → `Identifiable` → `Referable`). Without flattening, FastMCP only sees the properties defined directly on the schema and misses all inherited fields like `id`, `modelType`, and `assetInformation`. Circular references are handled by keeping a `$ref` pointer at the cycle point instead of recursing infinitely.
+3. **Curate** — applies the allowlist to filter paths, enforces read-only mode, applies operation ID aliases, and caps pagination limits.
+4. **Prune** — removes `components/schemas` entries that are no longer reachable from any remaining path. This prevents FastMCP's schema validator from processing circular schemas that belonged to paths filtered out in the previous step, which would otherwise cause it to hang.
+5. **Generate** — FastMCP generates MCP tools from the processed spec and wires them to the HTTP client.
+
+> **Note on `allOf` merging:** When multiple `allOf` elements define the same non-property keyword (e.g. `description`, `additionalProperties`), the first value is kept. This is safe for the standard IDTA AAS spec but may produce weaker validation constraints on specs with conflicting allOf-level keywords.
+
 ## Troubleshooting
 
 ### "Configuration file not found"

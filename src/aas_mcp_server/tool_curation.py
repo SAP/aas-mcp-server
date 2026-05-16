@@ -16,7 +16,9 @@ The goal is to provide a minimal, safe, and usable API surface for LLMs.
 """
 
 from typing import Any, Dict, Set, Tuple, Optional
+import json
 import logging
+import re
 
 from .constants import (
     OPENAPI_KEY_PATHS,
@@ -203,3 +205,87 @@ def _cap_limit_parameter(op: Dict[str, Any], max_limit: int) -> Dict[str, Any]:
         new_params.append(p2)
     op[OPENAPI_KEY_PARAMETERS] = new_params
     return op
+
+
+# ---------------------------------------------------------------------------
+# Schema pruning
+# ---------------------------------------------------------------------------
+
+_REF_PATTERN = re.compile(r'"#/components/schemas/([^"]+)"')
+
+
+def prune_unused_schemas(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Remove components/schemas entries not reachable from any path in the spec.
+
+    After curation filters the path surface area, many schemas are no longer
+    referenced. Leaving them in causes FastMCP's Pydantic validator to process
+    circular schemas from unrelated (filtered-out) paths, which hangs or crashes.
+
+    Reachability is seeded from:
+    - spec.paths (direct operation $refs)
+    - spec.components.responses, requestBodies, parameters, headers, callbacks
+      (indirect $refs: a path may reference #/components/responses/X which in
+      turn references #/components/schemas/Y — both X and Y are reachable)
+
+    Args:
+        spec: Curated OpenAPI specification (paths already filtered).
+
+    Returns:
+        New spec dict with only reachable schemas kept. Input is not mutated.
+    """
+    logger = logging.getLogger(__name__)
+
+    schemas: Dict[str, Any] = spec.get("components", {}).get("schemas", {})
+    if not schemas:
+        return spec
+
+    components = spec.get("components", {})
+
+    # Seed traversal from paths AND all non-schema component sections.
+    # Non-schema components (responses, requestBodies, parameters, headers,
+    # callbacks) can contain $refs to schemas; paths may reference them via
+    # $ref: '#/components/responses/Foo' etc.
+    seed: Dict[str, Any] = {"paths": spec.get("paths", {})}
+    for section in ("responses", "requestBodies", "parameters", "headers", "callbacks"):
+        if section in components:
+            seed[section] = components[section]
+
+    reachable: Set[str] = set()
+    _collect_refs(seed, schemas, reachable)
+
+    removed = set(schemas.keys()) - reachable
+    if not removed:
+        return spec
+
+    logger.debug(
+        "Pruning %d unreachable schemas: %s",
+        len(removed),
+        sorted(removed),
+    )
+
+    new_schemas = {k: v for k, v in schemas.items() if k in reachable}
+    result = dict(spec)
+    result["components"] = dict(spec.get("components", {}))
+    result["components"]["schemas"] = new_schemas
+    return result
+
+
+def _collect_refs(
+    node: Any,
+    schemas: Dict[str, Any],
+    reachable: Set[str],
+) -> None:
+    """
+    Walk *node* (any JSON-serialisable value) and collect all
+    #/components/schemas/<name> references into *reachable*, then
+    recursively walk the schema bodies of newly found names.
+    Handles cycles via the reachable set (each name visited at most once).
+    """
+    # Serialise to JSON string for a simple, recursive-free ref scan
+    text = json.dumps(node)
+    for name in _REF_PATTERN.findall(text):
+        if name not in reachable and name in schemas:
+            reachable.add(name)
+            # Recurse into the schema body to find transitive refs
+            _collect_refs(schemas[name], schemas, reachable)

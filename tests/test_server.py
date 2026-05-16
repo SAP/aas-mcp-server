@@ -33,14 +33,18 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_calls_configure_logging_with_provided_level(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
@@ -59,14 +63,18 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_calls_configure_logging_with_default_level(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
@@ -84,14 +92,18 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_processes_component_spec(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
@@ -110,20 +122,26 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_curates_spec_with_enable_writes_false(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=False."""
         mock_spec = {"paths": {}}
+        flat_spec = {"paths": {}}
         mock_process_spec.return_value = mock_spec
+        mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
@@ -132,24 +150,30 @@ class TestBuildMcpServer:
             enable_writes=False,
         )
 
-        mock_curate.assert_called_once_with(mock_spec, enable_writes=False, curation_settings=None)
+        mock_curate.assert_called_once_with(flat_spec, enable_writes=False, curation_settings=None)
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_curates_spec_with_enable_writes_true(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=True."""
         mock_spec = {"paths": {}}
+        flat_spec = {"paths": {}}
         mock_process_spec.return_value = mock_spec
+        mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
@@ -158,24 +182,30 @@ class TestBuildMcpServer:
             enable_writes=True,
         )
 
-        mock_curate.assert_called_once_with(mock_spec, enable_writes=True, curation_settings=None)
+        mock_curate.assert_called_once_with(flat_spec, enable_writes=True, curation_settings=None)
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_curates_spec_with_curation_settings(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with curation settings from config."""
         mock_spec = {"paths": {}}
+        flat_spec = {"paths": {}}
         mock_process_spec.return_value = mock_spec
+        mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
         mock_curation_settings = {"allowlist": [("get", "/shells")]}
         mock_component_config.curation = mock_curation_settings
@@ -186,18 +216,22 @@ class TestBuildMcpServer:
             enable_writes=False,
         )
 
-        mock_curate.assert_called_once_with(mock_spec, enable_writes=False, curation_settings=mock_curation_settings)
+        mock_curate.assert_called_once_with(flat_spec, enable_writes=False, curation_settings=mock_curation_settings)
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_builds_http_client_with_base_url(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
@@ -215,22 +249,28 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_creates_fastmcp_server_with_curated_spec(
         self,
         mock_fastmcp_class,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
-        """Test that FastMCP.from_openapi is called with curated spec."""
+        """Test that FastMCP.from_openapi is called with pruned curated spec."""
         mock_spec = {"paths": {}}
         mock_curated_spec = {"paths": {"/shells": {}}}
+        mock_pruned_spec = {"paths": {"/shells": {}}, "components": {"schemas": {}}}
         mock_process_spec.return_value = mock_spec
         mock_curate.return_value = mock_curated_spec
+        mock_prune.return_value = mock_pruned_spec
         mock_client = MagicMock()
         mock_build_client.return_value = mock_client
         mock_component_config = self._create_mock_component_config("aas-repo")
@@ -242,21 +282,25 @@ class TestBuildMcpServer:
         )
 
         mock_fastmcp_class.from_openapi.assert_called_once_with(
-            openapi_spec=mock_curated_spec,
+            openapi_spec=mock_pruned_spec,
             client=mock_client,
             name=SERVER_NAME_FORMAT.format(component_name="aas-repo"),
         )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_returns_fastmcp_instance(
         self,
         mock_fastmcp_class,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
@@ -276,45 +320,110 @@ class TestBuildMcpServer:
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
     @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    def test_flattens_spec_before_curation(
+        self,
+        mock_fastmcp,
+        mock_build_client,
+        mock_prune,
+        mock_curate,
+        mock_flatten,
+        mock_process_spec,
+        mock_configure_logging,
+    ):
+        """flatten_spec_schemas is called on the raw spec, and curation receives the flattened result."""
+        raw_spec = {"paths": {}, "components": {"schemas": {"Shell": {"allOf": []}}}}
+        flat_spec = {"paths": {}, "components": {"schemas": {"Shell": {"type": "object"}}}}
+        mock_process_spec.return_value = raw_spec
+        mock_flatten.return_value = flat_spec
+        mock_prune.return_value = flat_spec
+        mock_component_config = self._create_mock_component_config()
+
+        build_mcp_server(
+            component_config=mock_component_config,
+            base_url="http://localhost:8080",
+            enable_writes=False,
+        )
+
+        mock_flatten.assert_called_once_with(raw_spec)
+        # curate receives the flattened spec
+        args, kwargs = mock_curate.call_args
+        assert args[0] is flat_spec or kwargs.get("spec") is flat_spec
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
+    @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    def test_prunes_schemas_after_curation(
+        self,
+        mock_fastmcp,
+        mock_build_client,
+        mock_prune,
+        mock_curate,
+        mock_flatten,
+        mock_process_spec,
+        mock_configure_logging,
+    ):
+        """prune_unused_schemas is called on the curated spec, and FastMCP receives the pruned result."""
+        raw_spec = {"paths": {}}
+        curated_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}, "Orphan": {}}}}
+        pruned_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}}}}
+        mock_process_spec.return_value = raw_spec
+        mock_flatten.return_value = raw_spec
+        mock_curate.return_value = curated_spec
+        mock_prune.return_value = pruned_spec
+        mock_client = MagicMock()
+        mock_build_client.return_value = mock_client
+        mock_component_config = self._create_mock_component_config("aas-repo")
+
+        build_mcp_server(
+            component_config=mock_component_config,
+            base_url="http://localhost:8080",
+            enable_writes=False,
+        )
+
+        mock_prune.assert_called_once_with(curated_spec)
+        mock_fastmcp.from_openapi.assert_called_once_with(
+            openapi_spec=pruned_spec,
+            client=mock_client,
+            name=SERVER_NAME_FORMAT.format(component_name="aas-repo"),
+        )
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec")
+    @patch("aas_mcp_server.server.flatten_spec_schemas")
+    @patch("aas_mcp_server.server.curate_openapi_spec")
+    @patch("aas_mcp_server.server.prune_unused_schemas")
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
     def test_pipeline_execution_order(
         self,
         mock_fastmcp,
         mock_build_client,
+        mock_prune,
         mock_curate,
+        mock_flatten,
         mock_process_spec,
         mock_configure_logging,
     ):
-        """Test that pipeline steps execute in correct order."""
+        """Pipeline steps execute in correct order: load → flatten → curate → prune → client → FastMCP."""
         call_order = []
         mock_component_config = self._create_mock_component_config()
 
-        def track_configure_logging(*args, **kwargs):
-            call_order.append("configure_logging")
-
-        def track_process_spec(*args):
-            call_order.append("process_spec")
-            return {"paths": {}}
-
-        def track_curate(*args, **kwargs):
-            call_order.append("curate")
-            return {"paths": {}}
-
-        def track_build_client(*args, **kwargs):
-            call_order.append("build_client")
-            return MagicMock()
-
-        def track_fastmcp(*args, **kwargs):
-            call_order.append("fastmcp")
-            return MagicMock()
-
-        mock_configure_logging.side_effect = track_configure_logging
-        mock_process_spec.side_effect = track_process_spec
-        mock_curate.side_effect = track_curate
-        mock_build_client.side_effect = track_build_client
-        mock_fastmcp.from_openapi.side_effect = track_fastmcp
+        mock_configure_logging.side_effect = lambda *a, **kw: call_order.append("configure_logging")
+        mock_process_spec.side_effect = lambda *a: (call_order.append("process_spec"), {"paths": {}})[1]
+        mock_flatten.side_effect = lambda *a: (call_order.append("flatten"), {"paths": {}})[1]
+        mock_curate.side_effect = lambda *a, **kw: (call_order.append("curate"), {"paths": {}})[1]
+        mock_prune.side_effect = lambda *a: (call_order.append("prune"), {"paths": {}})[1]
+        mock_build_client.side_effect = lambda **kw: (call_order.append("build_client"), MagicMock())[1]
+        mock_fastmcp.from_openapi.side_effect = lambda **kw: (call_order.append("fastmcp"), MagicMock())[1]
 
         build_mcp_server(
             component_config=mock_component_config,
@@ -325,7 +434,9 @@ class TestBuildMcpServer:
         assert call_order == [
             "configure_logging",
             "process_spec",
+            "flatten",
             "curate",
+            "prune",
             "build_client",
             "fastmcp",
         ]
