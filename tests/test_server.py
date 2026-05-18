@@ -12,12 +12,13 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from fastmcp.server.auth import JWTVerifier
+from fastmcp.server.auth import JWTVerifier, RemoteAuthProvider
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
 
 from aas_mcp_server.server import (
     build_mcp_server,
     build_jwt_verifier,
+    build_auth_provider,
 )
 from aas_mcp_server.constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT
 from aas_mcp_server.config import ComponentConfig
@@ -56,7 +57,8 @@ def make_mock_component(name: str = "aas-repo") -> MagicMock:
 class TestBuildMcpServer:
     """Tests for build_mcp_server function."""
 
-    def _create_mock_component_config(self, component_name="aas-repo"):
+    @staticmethod
+    def _create_mock_component_config(component_name="aas-repo"):
         return make_mock_component(component_name)
 
     @patch("aas_mcp_server.server.configure_logging")
@@ -582,13 +584,18 @@ class TestBuildMcpServerAuth:
         "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
         "OAUTH_AUDIENCE": TEST_AUDIENCE,
     })
-    def test_jwt_verifier_passed_when_oauth_configured(
+    def test_remote_auth_provider_passed_when_oauth_configured(
         self, mock_fastmcp, mock_client, *args
     ):
-        """JWTVerifier is passed as auth= when OAUTH_ISSUER_URL is set."""
+        """RemoteAuthProvider is passed as auth= when OAUTH_ISSUER_URL is set.
+
+        RemoteAuthProvider wraps JWTVerifier and also serves the RFC 9728
+        protected resource metadata endpoint so MCP clients can discover
+        the authorization server automatically.
+        """
         build_mcp_server(make_mock_component(), "http://localhost", False)
         _, kwargs = mock_fastmcp.from_openapi.call_args
-        assert isinstance(kwargs.get("auth"), JWTVerifier)
+        assert isinstance(kwargs.get("auth"), RemoteAuthProvider)
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC)
@@ -604,3 +611,55 @@ class TestBuildMcpServerAuth:
         _, kwargs = mock_fastmcp.from_openapi.call_args
         middleware = kwargs.get("middleware", [])
         assert any(isinstance(m, RateLimitingMiddleware) for m in middleware)
+
+
+class TestBuildAuthProvider:
+    """Tests for build_auth_provider — the RemoteAuthProvider wrapper."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_returns_none_when_issuer_not_set(self):
+        """No OAUTH_ISSUER_URL → no auth provider."""
+        assert build_auth_provider(host="127.0.0.1", port=8000) is None
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_returns_remote_auth_provider(self):
+        """Returns a RemoteAuthProvider when OAUTH_ISSUER_URL is set."""
+        result = build_auth_provider(host="127.0.0.1", port=8000)
+        assert isinstance(result, RemoteAuthProvider)
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_authorization_server_set_to_issuer(self):
+        """RemoteAuthProvider advertises the issuer as the authorization server."""
+        result = build_auth_provider(host="127.0.0.1", port=8000)
+        assert result is not None
+        assert any(
+            TEST_ISSUER_URL in str(s) for s in result.authorization_servers
+        )
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_base_url_constructed_from_host_port(self):
+        """base_url is constructed from host and port when not explicitly set."""
+        result = build_auth_provider(host="127.0.0.1", port=8000)
+        assert result is not None
+        assert "127.0.0.1" in str(result.base_url)
+        assert "8000" in str(result.base_url)
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        "OAUTH_SERVER_BASE_URL": "https://mcp.example.com",
+    })
+    def test_explicit_base_url_overrides_host_port(self):
+        """OAUTH_SERVER_BASE_URL override is respected (reverse-proxy case)."""
+        result = build_auth_provider(host="127.0.0.1", port=8000)
+        assert result is not None
+        assert "mcp.example.com" in str(result.base_url)

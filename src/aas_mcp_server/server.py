@@ -8,7 +8,7 @@ This module orchestrates the complete MCP server construction pipeline:
 1. Process OpenAPI specification (derive from config + apply overlay)
 2. Curate the spec for safe tool generation (allowlist, read-only by default)
 3. Build HTTP client (no static auth — OAuth token is forwarded per-request)
-4. Build FastMCP JWTVerifier if OAuth is configured
+4. Build FastMCP RemoteAuthProvider if OAuth is configured
 5. Generate FastMCP server from curated OpenAPI spec
 """
 
@@ -16,8 +16,9 @@ import logging
 import os
 
 from fastmcp import FastMCP
-from fastmcp.server.auth import JWTVerifier
+from fastmcp.server.auth import JWTVerifier, RemoteAuthProvider
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from pydantic import AnyHttpUrl
 
 from .config import ComponentConfig
 from .spec_processor import process_component_spec
@@ -36,6 +37,7 @@ from .constants import (
     ENV_OAUTH_AUDIENCE,
     ENV_OAUTH_REQUIRED_SCOPES,
     ENV_OAUTH_JWKS_URI,
+    ENV_OAUTH_SERVER_BASE_URL,
     ENV_MCP_RATE_LIMIT_PER_MINUTE,
 )
 
@@ -45,18 +47,14 @@ HTTP_TRANSPORTS = frozenset({"http", "sse", "streamable-http"})
 SCOPES_DELIMITER = ","
 
 
-def build_jwt_verifier() -> JWTVerifier | None:
+def _build_jwt_verifier_from_env() -> JWTVerifier | None:
     """
-    Build a FastMCP JWTVerifier from environment variables, or return None.
+    Build a JWTVerifier from environment variables, or return None.
 
-    Returns a JWTVerifier when OAUTH_ISSUER_URL is set, enabling inbound
-    OAuth 2.1 Bearer token validation on HTTP transports. Returns None when
-    OAUTH_ISSUER_URL is not set (auth disabled — current default behaviour).
+    Shared implementation used by both build_jwt_verifier() and
+    build_auth_provider(). Emits security warnings for missing configuration.
 
-    Security warnings emitted here:
-    - Missing OAUTH_AUDIENCE: audience validation is disabled, which means
-      tokens intended for other resource servers could be accepted (token
-      passthrough risk).
+    Returns None when OAUTH_ISSUER_URL is not set.
     """
     issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL)
     if not issuer_url:
@@ -78,24 +76,79 @@ def build_jwt_verifier() -> JWTVerifier | None:
             s.strip() for s in scopes_raw.split(SCOPES_DELIMITER) if s.strip()
         ]
 
-    # Derive JWKS URI: explicit override or standard well-known path
     explicit_jwks = os.getenv(ENV_OAUTH_JWKS_URI)
     jwks_uri = explicit_jwks or f"{issuer_url.rstrip('/')}{JWKS_WELL_KNOWN_PATH}"
-
-    logger.info(
-        "OAuth 2.1 inbound auth enabled: issuer=%s, audience=%s, "
-        "scopes=%s, jwks_uri=%s",
-        issuer_url,
-        audience or "<not set>",
-        required_scopes or "<not set>",
-        jwks_uri,
-    )
 
     return JWTVerifier(
         jwks_uri=jwks_uri,
         issuer=issuer_url,
         audience=audience,
         required_scopes=required_scopes,
+    )
+
+
+def build_jwt_verifier() -> JWTVerifier | None:
+    """
+    Return a JWTVerifier built from environment variables, or None.
+
+    Retained as a public function for backward-compatibility with tests.
+    Production server construction uses build_auth_provider() which wraps
+    this in a RemoteAuthProvider to also serve the RFC 9728 discovery endpoint.
+    """
+    return _build_jwt_verifier_from_env()
+
+
+def build_auth_provider(
+    host: str,
+    port: int,
+) -> RemoteAuthProvider | None:
+    """
+    Build a FastMCP RemoteAuthProvider from environment variables, or return None.
+
+    RemoteAuthProvider wraps a JWTVerifier (for token validation) and also
+    serves the /.well-known/oauth-protected-resource/mcp endpoint (RFC 9728).
+    This endpoint tells MCP clients which authorization server issues valid
+    tokens, allowing them to perform the PKCE browser flow automatically.
+
+    Returns None when OAUTH_ISSUER_URL is not set (auth disabled).
+
+    Security warnings:
+    - Missing OAUTH_AUDIENCE: audience validation is disabled, which means
+      tokens intended for other resource servers could be accepted (token
+      passthrough risk per MCP Security Best Practices).
+    """
+    jwt_verifier = _build_jwt_verifier_from_env()
+    if jwt_verifier is None:
+        return None
+
+    issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL)  # already validated non-None above
+
+    # Derive the MCP server's public base URL for the RFC 9728 metadata endpoint.
+    # OAUTH_SERVER_BASE_URL can be set explicitly for reverse-proxy deployments.
+    # When constructing from host:port, use https:// for non-localhost hosts
+    # (localhost is used for local dev where TLS is typically not set up).
+    explicit_base = os.getenv(ENV_OAUTH_SERVER_BASE_URL)
+    if explicit_base:
+        server_base_url = explicit_base
+    elif host in LOCALHOST_ADDRESSES:
+        server_base_url = f"http://{host}:{port}"
+    else:
+        server_base_url = f"https://{host}:{port}"
+
+    logger.info(
+        "OAuth 2.1 inbound auth enabled: issuer=%s, audience=%s, "
+        "scopes=%s, jwks_uri=%s, server_base_url=%s",
+        issuer_url,
+        os.getenv(ENV_OAUTH_AUDIENCE) or "<not set>",
+        jwt_verifier.required_scopes or "<not set>",
+        jwt_verifier.jwks_uri,
+        server_base_url,
+    )
+
+    return RemoteAuthProvider(
+        token_verifier=jwt_verifier,
+        authorization_servers=[AnyHttpUrl(issuer_url)],
+        base_url=server_base_url,
     )
 
 
@@ -106,6 +159,7 @@ def build_mcp_server(
         log_level: str = DEFAULT_LOG_LEVEL,
         transport: str = "stdio",
         host: str = "127.0.0.1",
+        port: int = 8000,
 ) -> FastMCP:
     """
     Build and configure an MCP server for AAS components.
@@ -116,7 +170,8 @@ def build_mcp_server(
         enable_writes: Whether to enable write operations (POST/PUT/PATCH/DELETE)
         log_level: Logging level (default: INFO)
         transport: MCP transport type ('stdio', 'http', 'sse', etc.)
-        host: Host the server will bind to (used for TLS warning check)
+        host: Host the server will bind to (used for TLS warning and base URL)
+        port: Port the server will bind to (used for base URL construction)
 
     Returns:
         Configured FastMCP server instance
@@ -148,11 +203,13 @@ def build_mcp_server(
     # Remove schemas no longer reachable from the curated paths
     curated = prune_unused_schemas(curated)
 
-    # Build HTTP client (no static auth — token forwarding is automatic)
+    # Build HTTP client (no static auth — token forwarding via BearerTokenAuth)
     client = build_async_client(base_url=base_url)
 
-    # Build JWT verifier (None when OAuth not configured)
-    jwt_verifier = build_jwt_verifier()
+    # Build auth provider (None when OAuth not configured).
+    # RemoteAuthProvider = JWTVerifier + RFC 9728 protected resource metadata
+    # endpoint, which tells MCP clients which authorization server to use.
+    auth_provider = build_auth_provider(host=host, port=port)
 
     # Configure rate limiting (convert per-minute to per-second for token bucket)
     rate_limit = int(
@@ -170,7 +227,7 @@ def build_mcp_server(
         name=SERVER_NAME_FORMAT.format(
             component_name=component_config.component_name
         ),
-        auth=jwt_verifier,
+        auth=auth_provider,
         middleware=[rate_limiter],
     )
 

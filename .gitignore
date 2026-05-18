@@ -187,3 +187,5 @@ impl-specs/
 # Screenshots and temp files from local testing
 *.png
 *.jpg
+
+localtesting

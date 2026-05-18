@@ -154,6 +154,7 @@ def main() -> None:
             log_level=args.log_level,
             transport=args.transport,
             host=args.host,
+            port=args.port,
         )
     except Exception as e:
         logger.error(f"Failed to build MCP server: {e}", exc_info=True)
