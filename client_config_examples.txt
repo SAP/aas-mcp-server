@@ -11,11 +11,173 @@ Prerequisites for all clients:
   3. Download official AAS OpenAPI specs from:
      https://github.com/admin-shell-io/aas-specs
 
-Optional environment variables (all clients):
-  AAS_TOKEN               Bearer token for AAS backend authentication
-  AAS_API_KEY             API key for AAS backend authentication
-  AAS_MCP_ENABLE_WRITES=1 Enable write operations (POST/PUT/PATCH/DELETE)
-  AAS_HTTP_TIMEOUT        HTTP timeout in seconds (default: 30)
+================================================================================
+TRANSPORT MODES
+================================================================================
+
+stdio (default — local use, no OAuth required):
+  The server runs as a local subprocess. The OS process model provides
+  isolation. No inbound authentication is needed.
+
+HTTP / SSE / Streamable-HTTP (remote deployment — OAuth required):
+  The server listens on a network port. OAuth 2.1 Bearer token validation
+  is enforced when OAUTH_ISSUER_URL is set.
+
+================================================================================
+OAUTH 2.1 SETUP (HTTP transports only)
+================================================================================
+
+Required environment variables to enable OAuth:
+
+  OAUTH_ISSUER_URL          URL of your OAuth/OIDC provider
+  OAUTH_AUDIENCE            Expected audience claim in tokens (strongly recommended)
+  OAUTH_REQUIRED_SCOPES     Comma-separated required scopes (optional)
+  OAUTH_JWKS_URI            Override JWKS endpoint (optional, for non-standard IdPs)
+
+Recommended scopes:
+  Read-only server:   OAUTH_REQUIRED_SCOPES=aas:read
+  Write-enabled:      OAUTH_REQUIRED_SCOPES=aas:read,aas:write
+
+The validated OAuth Bearer token is automatically forwarded to the AAS backend
+on every request — no separate backend credentials are needed.
+
+Provider examples:
+  Keycloak:  OAUTH_ISSUER_URL=https://keycloak.example.com/realms/my-realm
+  Azure AD:  OAUTH_ISSUER_URL=https://login.microsoftonline.com/{tenant-id}/v2.0
+  SAP IAS:   OAUTH_ISSUER_URL=https://my-tenant.accounts.ondemand.com
+             (also set OAUTH_JWKS_URI for non-standard JWKS path)
+
+================================================================================
+1. CLAUDE DESKTOP
+   Config file: ~/Library/Application Support/Claude/claude_desktop_config.json
+   (macOS) or %APPDATA%\Claude\claude_desktop_config.json (Windows)
+================================================================================
+
+stdio (local, no OAuth):
+
+  {
+    "mcpServers": {
+      "aas-repo": {
+        "command": "aas-mcp-server",
+        "args": [
+          "--component", "aas-repo",
+          "--base-url", "http://localhost:8080",
+          "--config", "/path/to/your/config.yaml"
+        ],
+        "env": {
+          "LOG_LEVEL": "INFO"
+        }
+      }
+    }
+  }
+
+Remote HTTP server with OAuth (Claude Desktop uses MCP client OAuth flow):
+
+  {
+    "mcpServers": {
+      "aas-repo-remote": {
+        "url": "https://your-mcp-server.example.com/mcp",
+        "transport": "streamable-http"
+      }
+    }
+  }
+
+  The server must be started with:
+    OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm
+    OAUTH_AUDIENCE=aas-mcp-server
+    OAUTH_REQUIRED_SCOPES=aas:read
+    aas-mcp-server --component aas-repo --base-url https://your-backend:8080 \
+                   --transport streamable-http --host 0.0.0.0 --port 8000 \
+                   --config /path/to/config.yaml
+
+
+================================================================================
+2. CLAUDE CLI (claude mcp add)
+   Anthropic's Claude Code CLI -- https://claude.ai/code
+================================================================================
+
+Local stdio (no OAuth):
+
+  claude mcp add aas-repo \
+    --env LOG_LEVEL=INFO \
+    -- aas-mcp-server \
+       --component aas-repo \
+       --base-url http://localhost:8080 \
+       --config /path/to/your/config.yaml
+
+Remote HTTP server with OAuth:
+
+  claude mcp add aas-repo-remote \
+    -- https://your-mcp-server.example.com/mcp
+
+  Claude CLI will automatically perform the OAuth 2.1 PKCE flow on first use.
+  The server must have OAUTH_ISSUER_URL configured and expose the
+  /.well-known/oauth-authorization-server discovery endpoint.
+
+
+================================================================================
+3. OPENCODE
+   Config file: opencode.json in project root or ~/.config/opencode/opencode.json
+   Documentation: https://opencode.ai/docs/mcp-servers/
+================================================================================
+
+Local stdio (no OAuth):
+
+  {
+    "$schema": "https://opencode.ai/config.json",
+    "mcp": {
+      "aas-repo": {
+        "type": "local",
+        "command": [
+          "aas-mcp-server",
+          "--component", "aas-repo",
+          "--base-url", "http://localhost:8080",
+          "--config", "/path/to/your/config.yaml"
+        ],
+        "enabled": true,
+        "environment": {
+          "LOG_LEVEL": "INFO"
+        }
+      }
+    }
+  }
+
+Remote HTTP server with OAuth:
+
+  {
+    "$schema": "https://opencode.ai/config.json",
+    "mcp": {
+      "aas-repo-remote": {
+        "type": "remote",
+        "url": "https://your-mcp-server.example.com/mcp",
+        "enabled": true
+      }
+    }
+  }
+
+  OpenCode will perform the OAuth 2.1 PKCE flow automatically when connecting.
+
+
+================================================================================
+NOTES
+================================================================================
+
+- All four components can run simultaneously as separate MCP servers.
+  Each exposes a different set of AAS tools to the LLM.
+
+- You can run only the components you need. If you only use AAS Repository,
+  configure only the aas-repo entry.
+
+- Write operations are disabled by default (read-only mode).
+  To enable writes, add AAS_MCP_ENABLE_WRITES=1 to the environment and
+  set OAUTH_REQUIRED_SCOPES=aas:read,aas:write (HTTP transport) or just
+  AAS_MCP_ENABLE_WRITES=1 (stdio transport).
+
+- The --config path must point to a valid config.yaml that references your
+  OpenAPI spec files. See config.yaml.template for a complete example.
+
+- Rate limiting: The server enforces 60 requests/minute per client by default.
+  Override with MCP_RATE_LIMIT_PER_MINUTE env var.
 
 
 ================================================================================

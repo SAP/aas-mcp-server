@@ -7,29 +7,57 @@ Tests for server module.
 Tests the MCP server builder orchestration.
 """
 
+import logging
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from fastmcp.server.auth import JWTVerifier
+from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+
 from aas_mcp_server.server import (
     build_mcp_server,
+    build_jwt_verifier,
 )
 from aas_mcp_server.constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT
 from aas_mcp_server.config import ComponentConfig
+
+
+# ---------------------------------------------------------------------------
+# Module-level test constants
+# ---------------------------------------------------------------------------
+
+# An empty OpenAPI spec used as a return value when mocking the pipeline
+EMPTY_SPEC = {"paths": {}}
+
+# OAuth test values (no real network calls — only used in env-var patches)
+TEST_ISSUER_URL = "https://idp.example.com/realms/test"
+TEST_AUDIENCE = "aas-mcp-server"
+TEST_JWKS_URI_CUSTOM = "https://idp.example.com/custom/jwks"
+TEST_JWKS_URI_DERIVED = f"{TEST_ISSUER_URL}/.well-known/jwks.json"
+
+
+# ---------------------------------------------------------------------------
+# Shared mock factory (replaces two near-identical per-class helpers)
+# ---------------------------------------------------------------------------
+
+def make_mock_component(name: str = "aas-repo") -> MagicMock:
+    """Return a MagicMock that satisfies the ComponentConfig interface."""
+    m = MagicMock(spec=ComponentConfig)
+    m.component_name = name
+    m.curation = None
+    m.official_spec = Path("/app/specs/official.yaml")
+    m.implementation_spec = None
+    m.overlay = None
+    m.has_both_specs.return_value = False
+    return m
 
 
 class TestBuildMcpServer:
     """Tests for build_mcp_server function."""
 
     def _create_mock_component_config(self, component_name="aas-repo"):
-        """Create a mock ComponentConfig for testing."""
-        mock_config = MagicMock(spec=ComponentConfig)
-        mock_config.component_name = component_name
-        mock_config.curation = None
-        mock_config.official_spec = Path("/app/specs/official.yaml")
-        mock_config.implementation_spec = None
-        mock_config.overlay = None
-        mock_config.has_both_specs.return_value = False
-        return mock_config
+        return make_mock_component(component_name)
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -49,7 +77,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that configure_logging is called with provided log level."""
-        mock_process_spec.return_value = {"paths": {}}
+        mock_process_spec.return_value = EMPTY_SPEC
         mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
@@ -79,7 +107,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that configure_logging uses default log level when not provided."""
-        mock_process_spec.return_value = {"paths": {}}
+        mock_process_spec.return_value = EMPTY_SPEC
         mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
@@ -108,7 +136,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that process_component_spec is called with component config."""
-        mock_spec = {"paths": {}}
+        mock_spec = EMPTY_SPEC
         mock_process_spec.return_value = mock_spec
         mock_component_config = self._create_mock_component_config()
 
@@ -138,8 +166,8 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=False."""
-        mock_spec = {"paths": {}}
-        flat_spec = {"paths": {}}
+        mock_spec = EMPTY_SPEC
+        flat_spec = EMPTY_SPEC
         mock_process_spec.return_value = mock_spec
         mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
@@ -170,8 +198,8 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with enable_writes=True."""
-        mock_spec = {"paths": {}}
-        flat_spec = {"paths": {}}
+        mock_spec = EMPTY_SPEC
+        flat_spec = EMPTY_SPEC
         mock_process_spec.return_value = mock_spec
         mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
@@ -202,8 +230,8 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that curate_openapi_spec is called with curation settings from config."""
-        mock_spec = {"paths": {}}
-        flat_spec = {"paths": {}}
+        mock_spec = EMPTY_SPEC
+        flat_spec = EMPTY_SPEC
         mock_process_spec.return_value = mock_spec
         mock_flatten.return_value = flat_spec
         mock_component_config = self._create_mock_component_config()
@@ -236,7 +264,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that build_async_client is called with correct base_url."""
-        mock_process_spec.return_value = {"paths": {}}
+        mock_process_spec.return_value = EMPTY_SPEC
         mock_component_config = self._create_mock_component_config()
 
         build_mcp_server(
@@ -265,7 +293,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that FastMCP.from_openapi is called with pruned curated spec."""
-        mock_spec = {"paths": {}}
+        mock_spec = EMPTY_SPEC
         mock_curated_spec = {"paths": {"/shells": {}}}
         mock_pruned_spec = {"paths": {"/shells": {}}, "components": {"schemas": {}}}
         mock_process_spec.return_value = mock_spec
@@ -285,6 +313,8 @@ class TestBuildMcpServer:
             openapi_spec=mock_pruned_spec,
             client=mock_client,
             name=SERVER_NAME_FORMAT.format(component_name="aas-repo"),
+            auth=None,
+            middleware=mock_fastmcp_class.from_openapi.call_args.kwargs["middleware"],
         )
 
     @patch("aas_mcp_server.server.configure_logging")
@@ -305,7 +335,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """Test that build_mcp_server returns a FastMCP instance."""
-        mock_process_spec.return_value = {"paths": {}}
+        mock_process_spec.return_value = EMPTY_SPEC
         mock_mcp_instance = MagicMock()
         mock_fastmcp_class.from_openapi.return_value = mock_mcp_instance
         mock_component_config = self._create_mock_component_config()
@@ -372,7 +402,7 @@ class TestBuildMcpServer:
         mock_configure_logging,
     ):
         """prune_unused_schemas is called on the curated spec, and FastMCP receives the pruned result."""
-        raw_spec = {"paths": {}}
+        raw_spec = EMPTY_SPEC
         curated_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}, "Orphan": {}}}}
         pruned_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}}}}
         mock_process_spec.return_value = raw_spec
@@ -390,11 +420,10 @@ class TestBuildMcpServer:
         )
 
         mock_prune.assert_called_once_with(curated_spec)
-        mock_fastmcp.from_openapi.assert_called_once_with(
-            openapi_spec=pruned_spec,
-            client=mock_client,
-            name=SERVER_NAME_FORMAT.format(component_name="aas-repo"),
-        )
+        call_kwargs = mock_fastmcp.from_openapi.call_args.kwargs
+        assert call_kwargs["openapi_spec"] == pruned_spec
+        assert call_kwargs["client"] == mock_client
+        assert call_kwargs["name"] == SERVER_NAME_FORMAT.format(component_name="aas-repo")
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -418,10 +447,10 @@ class TestBuildMcpServer:
         mock_component_config = self._create_mock_component_config()
 
         mock_configure_logging.side_effect = lambda *a, **kw: call_order.append("configure_logging")
-        mock_process_spec.side_effect = lambda *a: (call_order.append("process_spec"), {"paths": {}})[1]
-        mock_flatten.side_effect = lambda *a: (call_order.append("flatten"), {"paths": {}})[1]
-        mock_curate.side_effect = lambda *a, **kw: (call_order.append("curate"), {"paths": {}})[1]
-        mock_prune.side_effect = lambda *a: (call_order.append("prune"), {"paths": {}})[1]
+        mock_process_spec.side_effect = lambda *a: (call_order.append("process_spec"), EMPTY_SPEC)[1]
+        mock_flatten.side_effect = lambda *a: (call_order.append("flatten"), EMPTY_SPEC)[1]
+        mock_curate.side_effect = lambda *a, **kw: (call_order.append("curate"), EMPTY_SPEC)[1]
+        mock_prune.side_effect = lambda *a: (call_order.append("prune"), EMPTY_SPEC)[1]
         mock_build_client.side_effect = lambda **kw: (call_order.append("build_client"), MagicMock())[1]
         mock_fastmcp.from_openapi.side_effect = lambda **kw: (call_order.append("fastmcp"), MagicMock())[1]
 
@@ -458,3 +487,120 @@ class TestConstants:
         result = SERVER_NAME_FORMAT.format(component_name="test-component")
         assert "AAS MCP Server" in result
         assert "test-component" in result
+
+
+class TestBuildJwtVerifier:
+    """Tests for build_jwt_verifier function — task 3.6."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_returns_none_when_oauth_issuer_not_set(self):
+        """No OAUTH_ISSUER_URL means no auth (current default behaviour)."""
+        result = build_jwt_verifier()
+        assert result is None
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_returns_jwt_verifier_when_issuer_is_set(self):
+        """OAUTH_ISSUER_URL set → returns a JWTVerifier instance."""
+        result = build_jwt_verifier()
+        assert isinstance(result, JWTVerifier)
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_jwks_uri_derived_from_issuer_when_not_set(self):
+        """JWKS URI defaults to {issuer}/.well-known/jwks.json."""
+        result = build_jwt_verifier()
+        assert result is not None
+        assert result.jwks_uri == TEST_JWKS_URI_DERIVED
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        "OAUTH_JWKS_URI": TEST_JWKS_URI_CUSTOM,
+    })
+    def test_explicit_jwks_uri_overrides_default(self):
+        """OAUTH_JWKS_URI override is respected."""
+        result = build_jwt_verifier()
+        assert result is not None
+        assert result.jwks_uri == TEST_JWKS_URI_CUSTOM
+
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        "OAUTH_REQUIRED_SCOPES": "aas:read,aas:write",
+    })
+    def test_required_scopes_parsed_from_env(self):
+        """Comma-separated OAUTH_REQUIRED_SCOPES are parsed into a list."""
+        result = build_jwt_verifier()
+        assert result is not None
+        assert result.required_scopes is not None
+        assert "aas:read" in result.required_scopes
+        assert "aas:write" in result.required_scopes
+
+    @patch.dict(os.environ, {"OAUTH_ISSUER_URL": TEST_ISSUER_URL})
+    def test_warning_emitted_when_audience_not_set(self, caplog):
+        """Missing OAUTH_AUDIENCE triggers a security WARNING (GAP-1)."""
+        with caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
+            build_jwt_verifier()
+        assert any("OAUTH_AUDIENCE" in r.message for r in caplog.records)
+        assert any(
+            "audience" in r.message.lower() for r in caplog.records
+        )
+
+
+class TestBuildMcpServerAuth:
+    """Tests that build_mcp_server wires auth and rate limiting."""
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_auth_is_none_when_oauth_not_configured(
+        self, mock_fastmcp, mock_client, *args
+    ):
+        """auth=None is passed to FastMCP when OAUTH_ISSUER_URL is not set."""
+        build_mcp_server(make_mock_component(), "http://localhost", False)
+        _, kwargs = mock_fastmcp.from_openapi.call_args
+        assert kwargs.get("auth") is None
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    @patch.dict(os.environ, {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_AUDIENCE": TEST_AUDIENCE,
+    })
+    def test_jwt_verifier_passed_when_oauth_configured(
+        self, mock_fastmcp, mock_client, *args
+    ):
+        """JWTVerifier is passed as auth= when OAUTH_ISSUER_URL is set."""
+        build_mcp_server(make_mock_component(), "http://localhost", False)
+        _, kwargs = mock_fastmcp.from_openapi.call_args
+        assert isinstance(kwargs.get("auth"), JWTVerifier)
+
+    @patch("aas_mcp_server.server.configure_logging")
+    @patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC)
+    @patch("aas_mcp_server.server.build_async_client")
+    @patch("aas_mcp_server.server.FastMCP")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_rate_limiter_always_present(self, mock_fastmcp, mock_client, *args):
+        """RateLimitingMiddleware is always included in middleware list."""
+        build_mcp_server(make_mock_component(), "http://localhost", False)
+        _, kwargs = mock_fastmcp.from_openapi.call_args
+        middleware = kwargs.get("middleware", [])
+        assert any(isinstance(m, RateLimitingMiddleware) for m in middleware)

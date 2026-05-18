@@ -99,16 +99,71 @@ components:
 # Usage
 # =============================================================================
 #
-# Runtime (MCP Server):
+# Runtime (MCP Server — stdio, for local use):
 #   aas-mcp-server --component aas-repo --base-url http://localhost:8080 --config config.yaml
 #
-# Build-Time (Generate Derived Specs):
-#   python3 scripts/generate_implementation.py --config config.yaml
+# Runtime (MCP Server — HTTP transport with OAuth):
+#   OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm \
+#   OAUTH_AUDIENCE=aas-mcp-server \
+#   OAUTH_REQUIRED_SCOPES=aas:read \
+#   aas-mcp-server --component aas-repo --base-url https://your-backend:8080 \
+#                  --transport streamable-http --host 0.0.0.0 --port 8000 \
+#                  --config config.yaml
+#
+# =============================================================================
+# Environment Variables — OAuth 2.1 Authorization (HTTP transports only)
+# =============================================================================
+#
+# OAUTH_ISSUER_URL        (Required to enable OAuth)
+#   URL of the OAuth 2.1 authorization server (identity provider).
+#   The server derives the JWKS URI as {OAUTH_ISSUER_URL}/.well-known/jwks.json
+#   unless OAUTH_JWKS_URI is set explicitly.
+#   Examples:
+#     Keycloak:   https://keycloak.example.com/realms/my-realm
+#     Azure AD:   https://login.microsoftonline.com/{tenant-id}/v2.0
+#     SAP IAS:    https://my-tenant.accounts.ondemand.com
+#
+# OAUTH_AUDIENCE          (Strongly recommended — prevents token passthrough abuse)
+#   Expected audience claim in Bearer tokens. Must match what the AAS backend
+#   also expects, since the validated token is forwarded to the backend.
+#   Examples: aas-mcp-server, api://my-app-id, https://api.example.com
+#
+# OAUTH_REQUIRED_SCOPES   (Optional)
+#   Comma-separated list of OAuth scopes required on every token.
+#   Recommended scope pairs:
+#     Read-only server:   OAUTH_REQUIRED_SCOPES=aas:read
+#     Write-enabled:      OAUTH_REQUIRED_SCOPES=aas:read,aas:write
+#   Omit to accept any valid token from the configured issuer.
+#
+# OAUTH_JWKS_URI           (Optional — override for non-standard providers)
+#   Explicit JWKS endpoint URL. Set when your IdP uses a non-standard path
+#   (e.g., some SAP IAS configurations).
+#   Default: {OAUTH_ISSUER_URL}/.well-known/jwks.json
+#
+# MCP_RATE_LIMIT_PER_MINUTE  (Optional, default: 60)
+#   Maximum MCP tool invocations per authenticated client per minute.
+#
+# =============================================================================
+# Environment Variables — Server / Transport
+# =============================================================================
+#
+# AAS_BASE_URL             Base URL of the AAS backend (required)
+# MCP_TRANSPORT            Transport: stdio (default), http, sse, streamable-http
+# MCP_HOST                 Bind host for HTTP transports (default: 127.0.0.1)
+# MCP_PORT                 Bind port for HTTP transports (default: 8000)
+# AAS_HTTP_TIMEOUT         Backend HTTP timeout in seconds (default: 30)
+# AAS_MCP_ENABLE_WRITES=1  Enable POST/PUT/PATCH/DELETE operations
+# LOG_LEVEL                Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
+# CONFIG_PATH              Path to this config file
 #
 # Docker:
 #   docker run \
 #     -v $(pwd)/config.yaml:/app/config/config.yaml \
 #     -v $(pwd)/specs:/app/specs \
 #     -e AAS_COMPONENT=aas-repo \
-#     -e AAS_BASE_URL=http://your-backend:8080 \
-#     -i aas-mcp-server
+#     -e AAS_BASE_URL=https://your-backend:8080 \
+#     -e OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm \
+#     -e OAUTH_AUDIENCE=aas-mcp-server \
+#     -e OAUTH_REQUIRED_SCOPES=aas:read \
+#     -p 8000:8000 \
+#     aas-mcp-server

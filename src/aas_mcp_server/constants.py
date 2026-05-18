@@ -69,17 +69,26 @@ ENV_CONFIG_PATH = "CONFIG_PATH"
 ENV_LOG_LEVEL = "LOG_LEVEL"
 ENV_MCP_TRANSPORT = "MCP_TRANSPORT"
 ENV_AAS_BASE_URL = "AAS_BASE_URL"
-ENV_AAS_TOKEN = "AAS_TOKEN"
-ENV_AAS_API_KEY = "AAS_API_KEY"
-ENV_AAS_API_KEY_HEADER = "AAS_API_KEY_HEADER"
 ENV_AAS_HTTP_TIMEOUT = "AAS_HTTP_TIMEOUT"
+
+# OAuth 2.1 configuration (for HTTP transports)
+ENV_OAUTH_ISSUER_URL = "OAUTH_ISSUER_URL"
+ENV_OAUTH_AUDIENCE = "OAUTH_AUDIENCE"
+ENV_OAUTH_REQUIRED_SCOPES = "OAUTH_REQUIRED_SCOPES"
+ENV_OAUTH_JWKS_URI = "OAUTH_JWKS_URI"
+ENV_MCP_RATE_LIMIT_PER_MINUTE = "MCP_RATE_LIMIT_PER_MINUTE"
 
 # ============================================================================
 # Server Configuration
 # ============================================================================
 SERVER_NAME_FORMAT = "AAS MCP Server ({component_name})"
 DEFAULT_HTTP_TIMEOUT = 30  # seconds
-DEFAULT_API_KEY_HEADER = "X-API-Key"
+DEFAULT_RATE_LIMIT_PER_MINUTE = 60
+SECONDS_PER_MINUTE = 60
+
+# OAuth / auth configuration
+JWKS_WELL_KNOWN_PATH = "/.well-known/jwks.json"
+LOCALHOST_ADDRESSES = frozenset({"127.0.0.1", "::1", "localhost"})
 
 # ============================================================================
 # Path and Filter Delimiters (for openapi_loader)

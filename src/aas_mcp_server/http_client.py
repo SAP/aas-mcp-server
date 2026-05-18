@@ -4,20 +4,23 @@
 """
 HTTP client configuration for AAS MCP Server.
 
-This module provides functionality to build async HTTP clients with
-optional authentication (Bearer token or API key) for communicating
-with AAS backend services.
+This module builds the httpx.AsyncClient used by FastMCP's OpenAPIProvider
+to call the AAS backend.
+
+Authentication is handled automatically by FastMCP's OpenAPITool.run():
+it calls get_http_headers() which forwards the inbound MCP request's
+Authorization header (the validated OAuth Bearer token) to the AAS backend
+at highest precedence. No static credentials are injected here.
+
+For stdio transport, get_http_headers() returns an empty dict (no HTTP
+request context), so the backend receives no Authorization header.
 """
 
 import os
 import httpx
 
 from .constants import (
-    ENV_AAS_TOKEN,
-    ENV_AAS_API_KEY,
-    ENV_AAS_API_KEY_HEADER,
     ENV_AAS_HTTP_TIMEOUT,
-    DEFAULT_API_KEY_HEADER,
     DEFAULT_HTTP_TIMEOUT,
 )
 
@@ -32,7 +35,11 @@ AUTH_BEARER_FORMAT = "Bearer {token}"
 
 def build_async_client(base_url: str) -> httpx.AsyncClient:
     """
-    Build an async HTTP client with optional authentication.
+    Build an async HTTP client with no static auth headers.
+
+    Authentication is handled per-request by FastMCP's OpenAPITool.run(),
+    which forwards the inbound Authorization header automatically via
+    get_http_headers(). No credentials should be set here.
 
     Args:
         base_url: Base URL for the HTTP client
@@ -40,16 +47,6 @@ def build_async_client(base_url: str) -> httpx.AsyncClient:
     Returns:
         Configured httpx.AsyncClient instance
     """
-    token = os.getenv(ENV_AAS_TOKEN)  # optional bearer token
-    api_key = os.getenv(ENV_AAS_API_KEY)  # optional API key
-    api_key_header = os.getenv(ENV_AAS_API_KEY_HEADER, DEFAULT_API_KEY_HEADER)
-
     headers = {HEADER_ACCEPT: CONTENT_TYPE_JSON}
-
-    if token:
-        headers[HEADER_AUTHORIZATION] = AUTH_BEARER_FORMAT.format(token=token)
-    if api_key:
-        headers[api_key_header] = api_key
-
     timeout = float(os.getenv(ENV_AAS_HTTP_TIMEOUT, str(DEFAULT_HTTP_TIMEOUT)))
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=timeout)

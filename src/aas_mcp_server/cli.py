@@ -138,7 +138,8 @@ def main() -> None:
     base_url = args.base_url or os.getenv(ENV_VAR_AAS_BASE_URL)
     if not base_url:
         logger.error(
-            f"Base URL is required. Provide via --base-url flag or AAS_BASE_URL environment variable."
+            "Base URL is required. Provide via --base-url flag or "
+            "AAS_BASE_URL environment variable."
         )
         sys.exit(1)
 
@@ -152,6 +153,7 @@ def main() -> None:
             enable_writes=args.enable_writes,
             log_level=args.log_level,
             transport=args.transport,
+            host=args.host,
         )
     except Exception as e:
         logger.error(f"Failed to build MCP server: {e}", exc_info=True)
