@@ -47,7 +47,9 @@ OPERATION_ID_ALIASES = {
 }
 
 
-def _matches_allowlist_pattern(method: str, path: str, allowlist: Set[Tuple[str, str]]) -> bool:
+def _matches_allowlist_pattern(
+    method: str, path: str, allowlist: Set[Tuple[str, str]]
+) -> bool:
     """
     Check if a method/path combination matches any pattern in the allowlist.
 
@@ -69,13 +71,13 @@ def _matches_allowlist_pattern(method: str, path: str, allowlist: Set[Tuple[str,
         return True
 
     # Wildcard matches
-    if ('*', path) in allowlist:  # All methods for this path
+    if ("*", path) in allowlist:  # All methods for this path
         return True
 
-    if (method, '*') in allowlist:  # This method for all paths
+    if (method, "*") in allowlist:  # This method for all paths
         return True
 
-    if ('*', '*') in allowlist:  # All methods for all paths
+    if ("*", "*") in allowlist:  # All methods for all paths
         return True
 
     return False
@@ -84,7 +86,7 @@ def _matches_allowlist_pattern(method: str, path: str, allowlist: Set[Tuple[str,
 def curate_openapi_spec(
     spec: Dict[str, Any],
     enable_writes: bool,
-    curation_settings: Optional[Dict[str, Any]] = None
+    curation_settings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Curate OpenAPI spec for MCP tool generation.
@@ -118,7 +120,7 @@ def curate_openapi_spec(
 
     # Use custom curation settings or fall back to defaults
     raw_allowlist = (
-        curation_settings.get('allowlist', DEFAULT_ALLOWLIST)
+        curation_settings.get("allowlist", DEFAULT_ALLOWLIST)
         if curation_settings
         else DEFAULT_ALLOWLIST
     )
@@ -131,7 +133,7 @@ def curate_openapi_spec(
         allowlist = raw_allowlist
 
     aliases = (
-        curation_settings.get('aliases', OPERATION_ID_ALIASES)
+        curation_settings.get("aliases", OPERATION_ID_ALIASES)
         if curation_settings
         else OPERATION_ID_ALIASES
     )
@@ -198,7 +200,10 @@ def _cap_limit_parameter(op: Dict[str, Any], max_limit: int) -> Dict[str, Any]:
     for p in params:
         p2 = dict(p)
         schema = p2.get(OPENAPI_KEY_SCHEMA)
-        if isinstance(schema, dict) and p2.get(OPENAPI_KEY_NAME) in {PARAM_NAME_LIMIT, PARAM_NAME_LIMIT_CAPITALIZED}:
+        if isinstance(schema, dict) and p2.get(OPENAPI_KEY_NAME) in {
+            PARAM_NAME_LIMIT,
+            PARAM_NAME_LIMIT_CAPITALIZED,
+        }:
             schema = dict(schema)
             schema[OPENAPI_KEY_MAXIMUM] = max_limit
             p2[OPENAPI_KEY_SCHEMA] = schema

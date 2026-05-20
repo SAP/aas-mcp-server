@@ -77,8 +77,7 @@ def load_openapi_yaml(path: str) -> dict[str, Any]:
     # If not found, raise error with helpful message
     tried_paths = "\n  - ".join(str(loc) for loc in locations_to_try)
     raise FileNotFoundError(
-        f"OpenAPI spec not found: {path}\n"
-        f"Tried locations:\n  - {tried_paths}"
+        f"OpenAPI spec not found: {path}\nTried locations:\n  - {tried_paths}"
     )
 
 
@@ -101,7 +100,9 @@ def parse_path_filter(filter_str: str) -> tuple[str, list[str] | None]:
     """
     if FILTER_DELIMITER in filter_str:
         path, methods_str = filter_str.rsplit(FILTER_DELIMITER, 1)
-        methods = [m.strip().lower() for m in methods_str.split(METHOD_SEPARATOR) if m.strip()]
+        methods = [
+            m.strip().lower() for m in methods_str.split(METHOD_SEPARATOR) if m.strip()
+        ]
         return path, methods if methods else None
     return filter_str, None
 
@@ -134,9 +135,7 @@ def _build_path_methods_map(include_filters: list[str]) -> dict[str, set[str] | 
 
 
 def _filter_path_definition(
-    definition: dict[str, Any],
-    allowed_methods: set[str] | None,
-    http_methods: set[str]
+    definition: dict[str, Any], allowed_methods: set[str] | None, http_methods: set[str]
 ) -> dict[str, Any] | None:
     """
     Filter a path definition to include only allowed methods.
@@ -196,7 +195,9 @@ def filter_paths(spec: dict[str, Any], include_filters: list[str]) -> dict[str, 
             continue
 
         allowed_methods = path_methods[path]
-        filtered_definition = _filter_path_definition(definition, allowed_methods, HTTP_METHODS)
+        filtered_definition = _filter_path_definition(
+            definition, allowed_methods, HTTP_METHODS
+        )
 
         if filtered_definition is not None:
             filtered_paths[path] = filtered_definition

@@ -31,8 +31,7 @@ def load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def derive_spec_from_intersection(
-    official_spec: Dict[str, Any],
-    implementation_spec: Dict[str, Any]
+    official_spec: Dict[str, Any], implementation_spec: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Derive OpenAPI spec from intersection of official and implementation specs.
@@ -89,8 +88,7 @@ def derive_spec_from_intersection(
 
         # Only include path if it has at least one method
         has_methods = any(
-            key in VALID_HTTP_METHODS
-            for key in filtered_operations.keys()
+            key in VALID_HTTP_METHODS for key in filtered_operations.keys()
         )
         if has_methods:
             filtered_paths[path] = filtered_operations
@@ -125,7 +123,9 @@ def process_component_spec(component_config: ComponentConfig) -> Dict[str, Any]:
 
     # Case 1: Both specs provided - derive intersection
     if component_config.has_both_specs():
-        logger.info("Both official and implementation specs provided - deriving intersection")
+        logger.info(
+            "Both official and implementation specs provided - deriving intersection"
+        )
 
         official = load_yaml(component_config.official_spec)
         implementation = load_yaml(component_config.implementation_spec)

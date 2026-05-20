@@ -32,11 +32,11 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "fastmcp>=3.0.0b2",
-    "httpx>=0.28.1",
-    "mcp[cli]>=1.26.0",
-    "oas-patch>=0.5.6",
-    "pyyaml>=6.0.3",
+    "fastmcp>=3.3.1,<4.0",
+    "httpx>=0.28.1,<1.0",
+    "mcp[cli]>=1.26.0,<2.0",
+    "oas-patch>=0.5.6,<1.0",
+    "pyyaml>=6.0.3,<7.0",
 ]
 
 [project.urls]

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ConfigError(Exception):
     """Raised when configuration is invalid or missing."""
+
     pass
 
 
@@ -74,10 +75,7 @@ class ComponentConfig:
     """Configuration for a single AAS component."""
 
     def __init__(
-        self,
-        component_name: str,
-        config_data: Dict[str, Any],
-        config_dir: Path
+        self, component_name: str, config_data: Dict[str, Any], config_dir: Path
     ):
         """
         Initialize component configuration.
@@ -204,7 +202,7 @@ class Config:
             self.components[component_name] = ComponentConfig(
                 component_name=component_name,
                 config_data=component_data,
-                config_dir=self.config_dir
+                config_dir=self.config_dir,
             )
 
     def get_component(self, component_name: str) -> ComponentConfig:

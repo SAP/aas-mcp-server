@@ -58,6 +58,7 @@ def flatten_spec_schemas(spec: Dict[str, Any]) -> Dict[str, Any]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve(
     schema: Any,
     all_schemas: Dict[str, Any],
@@ -96,7 +97,9 @@ def _resolve(
             result[key] = _resolve(value, all_schemas, visiting)
         elif isinstance(value, list):
             result[key] = [
-                _resolve(item, all_schemas, visiting) if isinstance(item, dict) else item
+                _resolve(item, all_schemas, visiting)
+                if isinstance(item, dict)
+                else item
                 for item in value
             ]
         else:

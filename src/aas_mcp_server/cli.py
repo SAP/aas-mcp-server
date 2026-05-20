@@ -52,7 +52,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog=CLI_PROGRAM_NAME,
         description=CLI_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Required arguments
@@ -60,40 +60,40 @@ def main() -> None:
         "--component",
         required=True,
         help="AAS component to serve (must be defined in config.yaml). "
-             "Examples: aas-repo, submodel-repo, aas-registry, submodel-registry"
+        "Examples: aas-repo, submodel-repo, aas-registry, submodel-registry",
     )
 
     parser.add_argument(
         "--base-url",
         help="Base URL for the component API (overrides config default). "
-             "Can also be set via AAS_BASE_URL environment variable."
+        "Can also be set via AAS_BASE_URL environment variable.",
     )
 
     # Optional arguments
     parser.add_argument(
         "--config",
         help="Path to configuration file (default: /app/config/config.yaml). "
-             "Can also be set via CONFIG_PATH environment variable."
+        "Can also be set via CONFIG_PATH environment variable.",
     )
 
     parser.add_argument(
         "--transport",
         default=os.getenv(ENV_VAR_MCP_TRANSPORT, DEFAULT_TRANSPORT),
         choices=["stdio", "http", "sse", "streamable-http"],
-        help="MCP transport protocol (default: stdio)"
+        help="MCP transport protocol (default: stdio)",
     )
 
     parser.add_argument(
         "--host",
         default=os.getenv("MCP_HOST", "127.0.0.1"),
-        help="Host to bind HTTP/SSE server to (default: 127.0.0.1)"
+        help="Host to bind HTTP/SSE server to (default: 127.0.0.1)",
     )
 
     parser.add_argument(
         "--port",
         type=int,
         default=int(os.getenv("MCP_PORT", "8000")),
-        help="Port to bind HTTP/SSE server to (default: 8000)"
+        help="Port to bind HTTP/SSE server to (default: 8000)",
     )
 
     parser.add_argument(
@@ -101,14 +101,14 @@ def main() -> None:
         action="store_true",
         default=os.getenv(ENV_VAR_AAS_MCP_ENABLE_WRITES) == ENABLE_WRITES_TRUE_VALUE,
         help="Enable write operations (POST/PUT/PATCH/DELETE). "
-             "Can also be set via AAS_MCP_ENABLE_WRITES=1"
+        "Can also be set via AAS_MCP_ENABLE_WRITES=1",
     )
 
     parser.add_argument(
         "--log-level",
         default=os.getenv(ENV_VAR_LOG_LEVEL, DEFAULT_LOG_LEVEL),
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Logging level (default: INFO)"
+        help="Logging level (default: INFO)",
     )
 
     args = parser.parse_args()
@@ -156,6 +156,11 @@ def main() -> None:
             host=args.host,
             port=args.port,
         )
+    except ValueError as e:
+        # Hard failure from security enforcement (e.g. OAUTH_AUDIENCE missing on
+        # non-localhost deployment — see server.py for details)
+        logger.error(f"Security configuration error: {e}")
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Failed to build MCP server: {e}", exc_info=True)
         sys.exit(1)

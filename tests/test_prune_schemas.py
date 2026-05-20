@@ -7,7 +7,6 @@ from any path in the spec, preventing FastMCP from choking on circular
 schemas in paths that were filtered out by the allowlist.
 """
 
-import pytest
 from aas_mcp_server.tool_curation import prune_unused_schemas
 
 
@@ -22,6 +21,7 @@ def _spec_with(paths: dict, schemas: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Basic pruning
 # ---------------------------------------------------------------------------
+
 
 def test_removes_schema_not_referenced_by_any_path():
     """Schemas unreachable from paths are removed."""
@@ -43,8 +43,8 @@ def test_removes_schema_not_referenced_by_any_path():
         },
         schemas={
             "ShellList": {"type": "array", "items": {"type": "string"}},
-            "Submodel": {"type": "object"},        # not referenced anywhere
-            "SubmodelElement": {"type": "object"}, # not referenced anywhere
+            "Submodel": {"type": "object"},  # not referenced anywhere
+            "SubmodelElement": {"type": "object"},  # not referenced anywhere
         },
     )
     result = prune_unused_schemas(spec)
@@ -107,7 +107,10 @@ def test_keeps_all_schemas_when_all_referenced():
             }
         },
         schemas={
-            "A": {"type": "object", "properties": {"b": {"$ref": "#/components/schemas/B"}}},
+            "A": {
+                "type": "object",
+                "properties": {"b": {"$ref": "#/components/schemas/B"}},
+            },
             "B": {"type": "object", "properties": {"name": {"type": "string"}}},
         },
     )
@@ -118,6 +121,7 @@ def test_keeps_all_schemas_when_all_referenced():
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 def test_spec_without_components_unchanged():
     """Spec with no components section is returned as-is."""
@@ -189,6 +193,7 @@ def test_original_spec_not_mutated():
         schemas={"Shell": {"type": "object"}},
     )
     import copy
+
     original = copy.deepcopy(spec)
     prune_unused_schemas(spec)
     assert spec == original
@@ -197,6 +202,7 @@ def test_original_spec_not_mutated():
 # ---------------------------------------------------------------------------
 # P1 fix: schemas reachable via components/* (not just paths) must be kept
 # ---------------------------------------------------------------------------
+
 
 def test_keeps_schema_reachable_via_components_responses():
     """
@@ -284,9 +290,7 @@ def test_keeps_schema_reachable_via_components_parameters():
         "paths": {
             "/shells/{aasIdentifier}": {
                 "get": {
-                    "parameters": [
-                        {"$ref": "#/components/parameters/AasIdParam"}
-                    ],
+                    "parameters": [{"$ref": "#/components/parameters/AasIdParam"}],
                     "responses": {"200": {"description": "ok"}},
                 }
             }
@@ -308,5 +312,7 @@ def test_keeps_schema_reachable_via_components_parameters():
     }
     result = prune_unused_schemas(spec)
     remaining = set(result["components"]["schemas"].keys())
-    assert "Identifier" in remaining, "Identifier is reachable via components/parameters"
+    assert "Identifier" in remaining, (
+        "Identifier is reachable via components/parameters"
+    )
     assert "Orphan" not in remaining

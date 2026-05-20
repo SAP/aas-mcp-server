@@ -38,7 +38,11 @@ def server_command(tmp_path):
     # Create minimal test config with docs specs
     config_path = tmp_path / "config.yaml"
     docs_dir = Path(__file__).parent.parent / "docs"
-    official_spec = docs_dir / "openapi" / "AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml"
+    official_spec = (
+        docs_dir
+        / "openapi"
+        / "AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml"
+    )
 
     if official_spec.exists():
         config_content = f"""
@@ -74,10 +78,14 @@ components:
 
     return [
         executable,
-        "--component", "aas-repo",
-        "--base-url", "http://localhost:8080",
-        "--config", str(config_path),
-        "--log-level", "WARNING"
+        "--component",
+        "aas-repo",
+        "--base-url",
+        "http://localhost:8080",
+        "--config",
+        str(config_path),
+        "--log-level",
+        "WARNING",
     ]
 
 
@@ -91,8 +99,8 @@ def test_mcp_initialize_clean_json(server_command):
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "test", "version": "1.0"}
-        }
+            "clientInfo": {"name": "test", "version": "1.0"},
+        },
     }
 
     # Run server and send request
@@ -101,7 +109,7 @@ def test_mcp_initialize_clean_json(server_command):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
     )
 
     try:
@@ -113,7 +121,7 @@ def test_mcp_initialize_clean_json(server_command):
     # Parse response - should be clean JSON on stdout
     try:
         response = json.loads(stdout.strip())
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         pytest.fail(f"Server output is not valid JSON. stdout: {stdout[:500]}")
 
     # Verify MCP response structure
@@ -123,7 +131,9 @@ def test_mcp_initialize_clean_json(server_command):
 
     # Verify server info
     server_info = response["result"].get("serverInfo", {})
-    assert server_info.get("name") == "AAS MCP Server (aas-repo)", "Incorrect server name"
+    assert server_info.get("name") == "AAS MCP Server (aas-repo)", (
+        "Incorrect server name"
+    )
     assert "version" in server_info, "Missing version in serverInfo"
 
 
@@ -136,8 +146,8 @@ def test_mcp_no_banner_interference(server_command):
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "test", "version": "1.0"}
-        }
+            "clientInfo": {"name": "test", "version": "1.0"},
+        },
     }
 
     proc = subprocess.Popen(
@@ -145,7 +155,7 @@ def test_mcp_no_banner_interference(server_command):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
     )
 
     try:
@@ -157,7 +167,9 @@ def test_mcp_no_banner_interference(server_command):
     # Verify no banner text in stdout
     banner_indicators = ["FastMCP", "gofastmcp.com", "╭", "╰", "▄▀"]
     for indicator in banner_indicators:
-        assert indicator not in stdout, f"Banner interference detected: '{indicator}' found in stdout"
+        assert indicator not in stdout, (
+            f"Banner interference detected: '{indicator}' found in stdout"
+        )
 
     # Verify output starts with valid JSON
     assert stdout.strip().startswith("{"), "Output does not start with JSON object"
@@ -173,8 +185,8 @@ def test_mcp_capabilities_response(server_command):
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "test", "version": "1.0"}
-        }
+            "clientInfo": {"name": "test", "version": "1.0"},
+        },
     }
 
     proc = subprocess.Popen(
@@ -182,7 +194,7 @@ def test_mcp_capabilities_response(server_command):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
     )
 
     try:
@@ -201,4 +213,6 @@ def test_mcp_capabilities_response(server_command):
 
     # Verify protocol version
     protocol_version = response["result"].get("protocolVersion")
-    assert protocol_version == "2024-11-05", f"Unexpected protocol version: {protocol_version}"
+    assert protocol_version == "2024-11-05", (
+        f"Unexpected protocol version: {protocol_version}"
+    )

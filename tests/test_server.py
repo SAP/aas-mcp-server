@@ -42,6 +42,7 @@ TEST_JWKS_URI_DERIVED = f"{TEST_ISSUER_URL}/.well-known/jwks.json"
 # Shared mock factory (replaces two near-identical per-class helpers)
 # ---------------------------------------------------------------------------
 
+
 def make_mock_component(name: str = "aas-repo") -> MagicMock:
     """Return a MagicMock that satisfies the ComponentConfig interface."""
     m = MagicMock(spec=ComponentConfig)
@@ -118,7 +119,9 @@ class TestBuildMcpServer:
             enable_writes=False,
         )
 
-        mock_configure_logging.assert_called_once_with(DEFAULT_LOG_LEVEL, transport="stdio")
+        mock_configure_logging.assert_called_once_with(
+            DEFAULT_LOG_LEVEL, transport="stdio"
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -180,7 +183,9 @@ class TestBuildMcpServer:
             enable_writes=False,
         )
 
-        mock_curate.assert_called_once_with(flat_spec, enable_writes=False, curation_settings=None)
+        mock_curate.assert_called_once_with(
+            flat_spec, enable_writes=False, curation_settings=None
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -212,7 +217,9 @@ class TestBuildMcpServer:
             enable_writes=True,
         )
 
-        mock_curate.assert_called_once_with(flat_spec, enable_writes=True, curation_settings=None)
+        mock_curate.assert_called_once_with(
+            flat_spec, enable_writes=True, curation_settings=None
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -246,7 +253,9 @@ class TestBuildMcpServer:
             enable_writes=False,
         )
 
-        mock_curate.assert_called_once_with(flat_spec, enable_writes=False, curation_settings=mock_curation_settings)
+        mock_curate.assert_called_once_with(
+            flat_spec, enable_writes=False, curation_settings=mock_curation_settings
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -317,6 +326,7 @@ class TestBuildMcpServer:
             name=SERVER_NAME_FORMAT.format(component_name="aas-repo"),
             auth=None,
             middleware=mock_fastmcp_class.from_openapi.call_args.kwargs["middleware"],
+            mask_error_details=True,
         )
 
     @patch("aas_mcp_server.server.configure_logging")
@@ -369,7 +379,10 @@ class TestBuildMcpServer:
     ):
         """flatten_spec_schemas is called on the raw spec, and curation receives the flattened result."""
         raw_spec = {"paths": {}, "components": {"schemas": {"Shell": {"allOf": []}}}}
-        flat_spec = {"paths": {}, "components": {"schemas": {"Shell": {"type": "object"}}}}
+        flat_spec = {
+            "paths": {},
+            "components": {"schemas": {"Shell": {"type": "object"}}},
+        }
         mock_process_spec.return_value = raw_spec
         mock_flatten.return_value = flat_spec
         mock_prune.return_value = flat_spec
@@ -405,8 +418,14 @@ class TestBuildMcpServer:
     ):
         """prune_unused_schemas is called on the curated spec, and FastMCP receives the pruned result."""
         raw_spec = EMPTY_SPEC
-        curated_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}, "Orphan": {}}}}
-        pruned_spec = {"paths": {"/shells": {}}, "components": {"schemas": {"Shell": {}}}}
+        curated_spec = {
+            "paths": {"/shells": {}},
+            "components": {"schemas": {"Shell": {}, "Orphan": {}}},
+        }
+        pruned_spec = {
+            "paths": {"/shells": {}},
+            "components": {"schemas": {"Shell": {}}},
+        }
         mock_process_spec.return_value = raw_spec
         mock_flatten.return_value = raw_spec
         mock_curate.return_value = curated_spec
@@ -425,7 +444,9 @@ class TestBuildMcpServer:
         call_kwargs = mock_fastmcp.from_openapi.call_args.kwargs
         assert call_kwargs["openapi_spec"] == pruned_spec
         assert call_kwargs["client"] == mock_client
-        assert call_kwargs["name"] == SERVER_NAME_FORMAT.format(component_name="aas-repo")
+        assert call_kwargs["name"] == SERVER_NAME_FORMAT.format(
+            component_name="aas-repo"
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -448,13 +469,30 @@ class TestBuildMcpServer:
         call_order = []
         mock_component_config = self._create_mock_component_config()
 
-        mock_configure_logging.side_effect = lambda *a, **kw: call_order.append("configure_logging")
-        mock_process_spec.side_effect = lambda *a: (call_order.append("process_spec"), EMPTY_SPEC)[1]
-        mock_flatten.side_effect = lambda *a: (call_order.append("flatten"), EMPTY_SPEC)[1]
-        mock_curate.side_effect = lambda *a, **kw: (call_order.append("curate"), EMPTY_SPEC)[1]
+        mock_configure_logging.side_effect = lambda *a, **kw: call_order.append(
+            "configure_logging"
+        )
+        mock_process_spec.side_effect = lambda *a: (
+            call_order.append("process_spec"),
+            EMPTY_SPEC,
+        )[1]
+        mock_flatten.side_effect = lambda *a: (
+            call_order.append("flatten"),
+            EMPTY_SPEC,
+        )[1]
+        mock_curate.side_effect = lambda *a, **kw: (
+            call_order.append("curate"),
+            EMPTY_SPEC,
+        )[1]
         mock_prune.side_effect = lambda *a: (call_order.append("prune"), EMPTY_SPEC)[1]
-        mock_build_client.side_effect = lambda **kw: (call_order.append("build_client"), MagicMock())[1]
-        mock_fastmcp.from_openapi.side_effect = lambda **kw: (call_order.append("fastmcp"), MagicMock())[1]
+        mock_build_client.side_effect = lambda **kw: (
+            call_order.append("build_client"),
+            MagicMock(),
+        )[1]
+        mock_fastmcp.from_openapi.side_effect = lambda **kw: (
+            call_order.append("fastmcp"),
+            MagicMock(),
+        )[1]
 
         build_mcp_server(
             component_config=mock_component_config,
@@ -500,41 +538,53 @@ class TestBuildJwtVerifier:
         result = build_jwt_verifier()
         assert result is None
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_returns_jwt_verifier_when_issuer_is_set(self):
         """OAUTH_ISSUER_URL set → returns a JWTVerifier instance."""
         result = build_jwt_verifier()
         assert isinstance(result, JWTVerifier)
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_jwks_uri_derived_from_issuer_when_not_set(self):
         """JWKS URI defaults to {issuer}/.well-known/jwks.json."""
         result = build_jwt_verifier()
         assert result is not None
         assert result.jwks_uri == TEST_JWKS_URI_DERIVED
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-        "OAUTH_JWKS_URI": TEST_JWKS_URI_CUSTOM,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+            "OAUTH_JWKS_URI": TEST_JWKS_URI_CUSTOM,
+        },
+    )
     def test_explicit_jwks_uri_overrides_default(self):
         """OAUTH_JWKS_URI override is respected."""
         result = build_jwt_verifier()
         assert result is not None
         assert result.jwks_uri == TEST_JWKS_URI_CUSTOM
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-        "OAUTH_REQUIRED_SCOPES": "aas:read,aas:write",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+            "OAUTH_REQUIRED_SCOPES": "aas:read,aas:write",
+        },
+    )
     def test_required_scopes_parsed_from_env(self):
         """Comma-separated OAUTH_REQUIRED_SCOPES are parsed into a list."""
         result = build_jwt_verifier()
@@ -549,9 +599,7 @@ class TestBuildJwtVerifier:
         with caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
             build_jwt_verifier()
         assert any("OAUTH_AUDIENCE" in r.message for r in caplog.records)
-        assert any(
-            "audience" in r.message.lower() for r in caplog.records
-        )
+        assert any("audience" in r.message.lower() for r in caplog.records)
 
 
 class TestBuildMcpServerAuth:
@@ -580,10 +628,13 @@ class TestBuildMcpServerAuth:
     @patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC)
     @patch("aas_mcp_server.server.build_async_client")
     @patch("aas_mcp_server.server.FastMCP")
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_remote_auth_provider_passed_when_oauth_configured(
         self, mock_fastmcp, mock_client, *args
     ):
@@ -621,31 +672,38 @@ class TestBuildAuthProvider:
         """No OAUTH_ISSUER_URL → no auth provider."""
         assert build_auth_provider(host="127.0.0.1", port=8000) is None
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_returns_remote_auth_provider(self):
         """Returns a RemoteAuthProvider when OAUTH_ISSUER_URL is set."""
         result = build_auth_provider(host="127.0.0.1", port=8000)
         assert isinstance(result, RemoteAuthProvider)
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_authorization_server_set_to_issuer(self):
         """RemoteAuthProvider advertises the issuer as the authorization server."""
         result = build_auth_provider(host="127.0.0.1", port=8000)
         assert result is not None
-        assert any(
-            TEST_ISSUER_URL in str(s) for s in result.authorization_servers
-        )
+        assert any(TEST_ISSUER_URL in str(s) for s in result.authorization_servers)
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
     def test_base_url_constructed_from_host_port(self):
         """base_url is constructed from host and port when not explicitly set."""
         result = build_auth_provider(host="127.0.0.1", port=8000)
@@ -653,13 +711,133 @@ class TestBuildAuthProvider:
         assert "127.0.0.1" in str(result.base_url)
         assert "8000" in str(result.base_url)
 
-    @patch.dict(os.environ, {
-        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
-        "OAUTH_AUDIENCE": TEST_AUDIENCE,
-        "OAUTH_SERVER_BASE_URL": "https://mcp.example.com",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+            "OAUTH_SERVER_BASE_URL": "https://mcp.example.com",
+        },
+    )
     def test_explicit_base_url_overrides_host_port(self):
         """OAUTH_SERVER_BASE_URL override is respected (reverse-proxy case)."""
         result = build_auth_provider(host="127.0.0.1", port=8000)
         assert result is not None
         assert "mcp.example.com" in str(result.base_url)
+
+
+class TestAudienceEnforcement:
+    """Tests for OAUTH_AUDIENCE enforcement.
+
+    OAUTH_AUDIENCE is mandatory (hard startup failure) when:
+    - host is a non-localhost address, OR
+    - OAUTH_SERVER_BASE_URL is set (reverse-proxy case: localhost bind but public URL)
+
+    OAUTH_AUDIENCE is optional (warning only) ONLY when:
+    - host is localhost AND OAUTH_SERVER_BASE_URL is not set
+    (genuine local development scenario)
+    """
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            # OAUTH_AUDIENCE intentionally absent
+        },
+    )
+    def test_non_local_host_without_audience_raises(self):
+        """Non-localhost host without OAUTH_AUDIENCE → hard failure."""
+        import pytest
+
+        with pytest.raises(ValueError, match="OAUTH_AUDIENCE must be set"):
+            build_auth_provider(host="0.0.0.0", port=8000)
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_AUDIENCE": TEST_AUDIENCE,
+        },
+    )
+    def test_non_local_host_with_audience_succeeds(self):
+        """Non-localhost host with OAUTH_AUDIENCE set → no error."""
+        result = build_auth_provider(host="0.0.0.0", port=8000)
+        assert isinstance(result, RemoteAuthProvider)
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            # OAUTH_AUDIENCE intentionally absent, no OAUTH_SERVER_BASE_URL
+        },
+    )
+    def test_localhost_without_audience_warns_not_fails(self, caplog):
+        """Pure localhost (no OAUTH_SERVER_BASE_URL) → warning only, no failure."""
+        with caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
+            result = build_auth_provider(host="127.0.0.1", port=8000)
+        assert result is not None
+        assert any("OAUTH_AUDIENCE" in r.message for r in caplog.records)
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_SERVER_BASE_URL": "https://mcp.example.com",
+            # OAUTH_AUDIENCE absent — reverse-proxy case must be hard failure
+        },
+    )
+    def test_localhost_with_server_base_url_without_audience_raises(self):
+        """localhost bind + OAUTH_SERVER_BASE_URL set (reverse-proxy) → hard failure.
+
+        OAUTH_SERVER_BASE_URL signals the operator declared a public URL.
+        Even though the bind address is localhost, the server is externally
+        reachable, so audience enforcement applies.
+        """
+        import pytest
+
+        with pytest.raises(ValueError, match="OAUTH_AUDIENCE must be set"):
+            build_auth_provider(host="127.0.0.1", port=8000)
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            # OAUTH_AUDIENCE absent
+        },
+    )
+    def test_loopback_ipv6_without_audience_warns_not_fails(self, caplog):
+        """::1 (IPv6 loopback, no OAUTH_SERVER_BASE_URL) — warning only."""
+        with caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
+            result = build_auth_provider(host="::1", port=8000)
+        assert result is not None
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            # OAUTH_AUDIENCE absent
+        },
+    )
+    def test_localhost_hostname_without_audience_warns_not_fails(self, caplog):
+        """'localhost' string (no OAUTH_SERVER_BASE_URL) — warning only."""
+        with caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
+            result = build_auth_provider(host="localhost", port=8000)
+        assert result is not None
+
+    @patch.dict(
+        os.environ,
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            # OAUTH_AUDIENCE absent
+        },
+    )
+    def test_error_message_is_actionable(self):
+        """Error message explains the risk and what to set."""
+        import pytest
+
+        with pytest.raises(ValueError) as exc_info:
+            build_auth_provider(host="0.0.0.0", port=8000)
+        msg = str(exc_info.value)
+        assert "OAUTH_AUDIENCE" in msg
+        assert "network-accessible" in msg
+        assert "aud" in msg

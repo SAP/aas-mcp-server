@@ -8,7 +8,6 @@ Tests command-line interface argument parsing and configuration.
 """
 
 import os
-import sys
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -30,7 +29,16 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo", "--base-url", "http://localhost:8080"])
+    @patch(
+        "sys.argv",
+        [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://localhost:8080",
+        ],
+    )
     def test_main_builds_server_with_config(self, mock_load_config, mock_build_server):
         """Test that main builds server using configuration from config file."""
         # Setup mocks
@@ -56,8 +64,19 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo", "--base-url", "http://custom:9000"])
-    def test_main_uses_custom_base_url_from_arg(self, mock_load_config, mock_build_server):
+    @patch(
+        "sys.argv",
+        [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://custom:9000",
+        ],
+    )
+    def test_main_uses_custom_base_url_from_arg(
+        self, mock_load_config, mock_build_server
+    ):
         """Test that main uses custom base URL from command line."""
         mock_component_config = MagicMock()
         mock_config = MagicMock()
@@ -98,8 +117,19 @@ class TestMain:
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
     @patch.dict(os.environ, {ENV_VAR_AAS_BASE_URL: "http://env-server:8888"})
-    @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo", "--base-url", "http://arg-server:7777"])
-    def test_main_prioritizes_arg_over_env_for_base_url(self, mock_load_config, mock_build_server):
+    @patch(
+        "sys.argv",
+        [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://arg-server:7777",
+        ],
+    )
+    def test_main_prioritizes_arg_over_env_for_base_url(
+        self, mock_load_config, mock_build_server
+    ):
         """Test that command line arg takes precedence over env var."""
         mock_component_config = MagicMock()
         mock_config = MagicMock()
@@ -118,7 +148,17 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo", "--base-url", "http://localhost:8080", "--enable-writes"])
+    @patch(
+        "sys.argv",
+        [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://localhost:8080",
+            "--enable-writes",
+        ],
+    )
     def test_main_enables_writes_from_arg(self, mock_load_config, mock_build_server):
         """Test that main enables writes when flag is provided."""
         mock_component_config = MagicMock()
@@ -138,7 +178,13 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch.dict(os.environ, {ENV_VAR_AAS_MCP_ENABLE_WRITES: ENABLE_WRITES_TRUE_VALUE, ENV_VAR_AAS_BASE_URL: "http://localhost:8080"})
+    @patch.dict(
+        os.environ,
+        {
+            ENV_VAR_AAS_MCP_ENABLE_WRITES: ENABLE_WRITES_TRUE_VALUE,
+            ENV_VAR_AAS_BASE_URL: "http://localhost:8080",
+        },
+    )
     @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo"])
     def test_main_enables_writes_from_env(self, mock_load_config, mock_build_server):
         """Test that main enables writes from environment variable."""
@@ -159,9 +205,17 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch.dict(os.environ, {ENV_VAR_AAS_MCP_ENABLE_WRITES: "0", ENV_VAR_AAS_BASE_URL: "http://localhost:8080"})
+    @patch.dict(
+        os.environ,
+        {
+            ENV_VAR_AAS_MCP_ENABLE_WRITES: "0",
+            ENV_VAR_AAS_BASE_URL: "http://localhost:8080",
+        },
+    )
     @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo"])
-    def test_main_disables_writes_when_env_not_1(self, mock_load_config, mock_build_server):
+    def test_main_disables_writes_when_env_not_1(
+        self, mock_load_config, mock_build_server
+    ):
         """Test that writes are disabled when env var is not '1'."""
         mock_component_config = MagicMock()
         mock_config = MagicMock()
@@ -180,8 +234,21 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo", "--base-url", "http://localhost:8080", "--log-level", "DEBUG"])
-    def test_main_uses_custom_log_level_from_arg(self, mock_load_config, mock_build_server):
+    @patch(
+        "sys.argv",
+        [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://localhost:8080",
+            "--log-level",
+            "DEBUG",
+        ],
+    )
+    def test_main_uses_custom_log_level_from_arg(
+        self, mock_load_config, mock_build_server
+    ):
         """Test that main uses custom log level from command line."""
         mock_component_config = MagicMock()
         mock_config = MagicMock()
@@ -200,7 +267,10 @@ class TestMain:
 
     @patch("aas_mcp_server.cli.build_mcp_server")
     @patch("aas_mcp_server.cli.load_config")
-    @patch.dict(os.environ, {ENV_VAR_LOG_LEVEL: "WARNING", ENV_VAR_AAS_BASE_URL: "http://localhost:8080"})
+    @patch.dict(
+        os.environ,
+        {ENV_VAR_LOG_LEVEL: "WARNING", ENV_VAR_AAS_BASE_URL: "http://localhost:8080"},
+    )
     @patch("sys.argv", ["aas-mcp-server", "--component", "aas-repo"])
     def test_main_uses_log_level_from_env(self, mock_load_config, mock_build_server):
         """Test that main uses log level from environment variable."""

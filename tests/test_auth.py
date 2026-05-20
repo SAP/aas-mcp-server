@@ -86,6 +86,7 @@ EMPTY_SPEC = {"paths": {}}
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
+
 def make_test_server(required_scopes: list[str] | None = None) -> FastMCP:
     """Build a minimal FastMCP server with StaticTokenVerifier for testing."""
     verifier = StaticTokenVerifier(
@@ -124,6 +125,7 @@ def _bearer(token: str) -> dict[str, str]:
 # 6.1 — Valid / invalid / expired / wrong-scope token responses
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_valid_token_accepted():
     """6.1a: Request with valid Bearer token succeeds (200 or MCP response)."""
@@ -150,9 +152,7 @@ async def test_invalid_token_returns_401():
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
         async with httpx.AsyncClient() as client:
-            r = await client.post(
-                url, json=MCP_REQUEST, headers=_bearer(TOKEN_INVALID)
-            )
+            r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_INVALID))
         assert r.status_code == 401, f"Expected 401, got {r.status_code}"
 
 
@@ -162,9 +162,7 @@ async def test_expired_token_returns_401():
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
         async with httpx.AsyncClient() as client:
-            r = await client.post(
-                url, json=MCP_REQUEST, headers=_bearer(TOKEN_EXPIRED)
-            )
+            r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_EXPIRED))
         assert r.status_code == 401, f"Expected 401, got {r.status_code}"
 
 
@@ -180,9 +178,7 @@ async def test_token_missing_required_scope_returns_4xx():
     async with run_server_async(mcp, transport="streamable-http") as url:
         async with httpx.AsyncClient() as client:
             # TOKEN_VALID only has SCOPE_READ, not SCOPE_WRITE
-            r = await client.post(
-                url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID)
-            )
+            r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID))
         assert r.status_code in (401, 403), (
             f"Token with missing scope should be rejected; got {r.status_code}"
         )
@@ -191,6 +187,7 @@ async def test_token_missing_required_scope_returns_4xx():
 # ---------------------------------------------------------------------------
 # 5.2 — Per-request auth (no session-based bypass)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_second_request_with_invalid_token_rejected():
@@ -201,9 +198,7 @@ async def test_second_request_with_invalid_token_rejected():
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
         async with httpx.AsyncClient() as client:
-            r1 = await client.post(
-                url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID)
-            )
+            r1 = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID))
             assert r1.status_code != 401, f"First request failed: {r1.status_code}"
 
             r2 = await client.post(
@@ -219,6 +214,7 @@ async def test_second_request_with_invalid_token_rejected():
 # ---------------------------------------------------------------------------
 # 5.3 — Token in query string rejected (MCP spec §5.1.1)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_token_in_query_string_rejected():
@@ -242,6 +238,7 @@ async def test_token_in_query_string_rejected():
 # 6.2 — stdio transport: no auth required
 # ---------------------------------------------------------------------------
 
+
 def test_stdio_build_has_no_auth():
     """6.2: build_mcp_server with stdio transport and no OAUTH_ISSUER_URL
     sets auth=None — stdio always bypasses inbound auth.
@@ -254,15 +251,16 @@ def test_stdio_build_has_no_auth():
     mock_config.overlay = None
     mock_config.has_both_specs.return_value = False
 
-    with patch("aas_mcp_server.server.configure_logging"), \
-         patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC), \
-         patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC), \
-         patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC), \
-         patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC), \
-         patch("aas_mcp_server.server.build_async_client"), \
-         patch("aas_mcp_server.server.FastMCP") as mock_fastmcp, \
-         patch.dict(os.environ, {}, clear=True):
-
+    with (
+        patch("aas_mcp_server.server.configure_logging"),
+        patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.build_async_client"),
+        patch("aas_mcp_server.server.FastMCP") as mock_fastmcp,
+        patch.dict(os.environ, {}, clear=True),
+    ):
         build_mcp_server(mock_config, "http://localhost", False, transport="stdio")
 
         _, kwargs = mock_fastmcp.from_openapi.call_args
@@ -272,6 +270,7 @@ def test_stdio_build_has_no_auth():
 # ---------------------------------------------------------------------------
 # 6.3 — OAuth discovery endpoint accessible without auth
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_oauth_discovery_endpoint_no_auth_required():
@@ -285,9 +284,7 @@ async def test_oauth_discovery_endpoint_no_auth_required():
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
         parsed = urlparse(url)
-        discovery_url = (
-            f"{parsed.scheme}://{parsed.netloc}{OAUTH_DISCOVERY_PATH}"
-        )
+        discovery_url = f"{parsed.scheme}://{parsed.netloc}{OAUTH_DISCOVERY_PATH}"
         async with httpx.AsyncClient() as client:
             r = await client.get(discovery_url)
         assert r.status_code not in (401, 403), (
@@ -299,12 +296,15 @@ async def test_oauth_discovery_endpoint_no_auth_required():
 # 5.5 — Audience warning test
 # ---------------------------------------------------------------------------
 
+
 def test_warning_logged_when_audience_not_set(caplog):
     """5.5: Startup WARNING is emitted when OAUTH_ISSUER_URL is set
     but OAUTH_AUDIENCE is not — GAP-1 (token passthrough) mitigation.
     """
-    with patch.dict(os.environ, {"OAUTH_ISSUER_URL": TEST_ISSUER_URL}), \
-         caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"):
+    with (
+        patch.dict(os.environ, {"OAUTH_ISSUER_URL": TEST_ISSUER_URL}),
+        caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"),
+    ):
         build_jwt_verifier()
 
     warning_messages = [

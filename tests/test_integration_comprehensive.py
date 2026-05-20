@@ -17,15 +17,16 @@ This test suite is designed for CI/CD and expects:
 - Test fixtures in tests/fixtures/
 """
 
-import json
 import pytest
 import yaml
 from pathlib import Path
-from typing import Dict, Any
 import httpx
 
-from aas_mcp_server.config import load_config, ComponentConfig, ConfigError
-from aas_mcp_server.spec_processor import process_component_spec, derive_spec_from_intersection
+from aas_mcp_server.config import load_config
+from aas_mcp_server.spec_processor import (
+    process_component_spec,
+    derive_spec_from_intersection,
+)
 from aas_mcp_server.tool_curation import curate_openapi_spec
 from aas_mcp_server.server import build_mcp_server
 
@@ -77,7 +78,9 @@ class TestSpecIntersection:
 
     def test_intersection_basic(self, sample_official_spec, sample_implementation_spec):
         """Test basic intersection of official and implementation specs."""
-        derived = derive_spec_from_intersection(sample_official_spec, sample_implementation_spec)
+        derived = derive_spec_from_intersection(
+            sample_official_spec, sample_implementation_spec
+        )
 
         # Should have 2 paths (asset-information not in implementation)
         assert len(derived["paths"]) == 2
@@ -94,13 +97,23 @@ class TestSpecIntersection:
         assert "put" in derived["paths"]["/shells/{aasIdentifier}"]
         assert "delete" in derived["paths"]["/shells/{aasIdentifier}"]
 
-    def test_intersection_preserves_official_details(self, sample_official_spec, sample_implementation_spec):
+    def test_intersection_preserves_official_details(
+        self, sample_official_spec, sample_implementation_spec
+    ):
         """Test that intersection preserves details from official spec."""
-        derived = derive_spec_from_intersection(sample_official_spec, sample_implementation_spec)
+        derived = derive_spec_from_intersection(
+            sample_official_spec, sample_implementation_spec
+        )
 
         # Check that operationIds from official spec are preserved
-        assert derived["paths"]["/shells"]["get"]["operationId"] == "GetAllAssetAdministrationShells"
-        assert derived["paths"]["/shells"]["post"]["operationId"] == "PostAssetAdministrationShell"
+        assert (
+            derived["paths"]["/shells"]["get"]["operationId"]
+            == "GetAllAssetAdministrationShells"
+        )
+        assert (
+            derived["paths"]["/shells"]["post"]["operationId"]
+            == "PostAssetAdministrationShell"
+        )
 
         # Check that parameters from official spec are preserved
         get_op = derived["paths"]["/shells/{aasIdentifier}"]["get"]
@@ -115,14 +128,16 @@ class TestSpecIntersection:
             "info": {"title": "Official", "version": "1.0.0"},
             "paths": {
                 "/shells": {"get": {"responses": {"200": {"description": "Success"}}}}
-            }
+            },
         }
         implementation = {
             "openapi": "3.0.3",
             "info": {"title": "Implementation", "version": "1.0.0"},
             "paths": {
-                "/submodels": {"get": {"responses": {"200": {"description": "Success"}}}}
-            }
+                "/submodels": {
+                    "get": {"responses": {"200": {"description": "Success"}}}
+                }
+            },
         }
 
         derived = derive_spec_from_intersection(official, implementation)
@@ -132,7 +147,9 @@ class TestSpecIntersection:
 class TestOverlayApplication:
     """Test overlay application."""
 
-    def test_overlay_renames_operations(self, sample_official_spec, sample_overlay, tmp_path):
+    def test_overlay_renames_operations(
+        self, sample_official_spec, sample_overlay, tmp_path
+    ):
         """Test that overlay renames operationIds."""
         from oas_patch import apply_overlay
 
@@ -142,10 +159,16 @@ class TestOverlayApplication:
         # Check renamed operations
         assert result["paths"]["/shells"]["get"]["operationId"] == "list_shells"
         assert result["paths"]["/shells"]["post"]["operationId"] == "create_shell"
-        assert result["paths"]["/shells/{aasIdentifier}"]["get"]["operationId"] == "get_shell"
+        assert (
+            result["paths"]["/shells/{aasIdentifier}"]["get"]["operationId"]
+            == "get_shell"
+        )
 
         # Check that other operations are unchanged
-        assert result["paths"]["/shells/{aasIdentifier}"]["put"]["operationId"] == "PutAssetAdministrationShellById"
+        assert (
+            result["paths"]["/shells/{aasIdentifier}"]["put"]["operationId"]
+            == "PutAssetAdministrationShellById"
+        )
 
     def test_overlay_updates_summaries(self, sample_official_spec, sample_overlay):
         """Test that overlay updates summaries."""
@@ -153,8 +176,14 @@ class TestOverlayApplication:
 
         result = apply_overlay(sample_official_spec, sample_overlay)
 
-        assert result["paths"]["/shells"]["get"]["summary"] == "List all Asset Administration Shells"
-        assert result["paths"]["/shells"]["post"]["summary"] == "Create a new Asset Administration Shell"
+        assert (
+            result["paths"]["/shells"]["get"]["summary"]
+            == "List all Asset Administration Shells"
+        )
+        assert (
+            result["paths"]["/shells"]["post"]["summary"]
+            == "Create a new Asset Administration Shell"
+        )
 
 
 class TestCuration:
@@ -163,17 +192,14 @@ class TestCuration:
     def test_allowlist_filters_operations(self, sample_official_spec):
         """Test that allowlist filters out non-allowed operations."""
         curation_settings = {
-            "allowlist": [
-                ("get", "/shells"),
-                ("get", "/shells/{aasIdentifier}")
-            ],
-            "aliases": {}
+            "allowlist": [("get", "/shells"), ("get", "/shells/{aasIdentifier}")],
+            "aliases": {},
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=False,
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Should only have 2 operations (the 2 GETs)
@@ -190,15 +216,15 @@ class TestCuration:
                 ("get", "/shells"),
                 ("post", "/shells"),  # In allowlist but should be blocked by read-only
                 ("get", "/shells/{aasIdentifier}"),
-                ("delete", "/shells/{aasIdentifier}")  # In allowlist but blocked
+                ("delete", "/shells/{aasIdentifier}"),  # In allowlist but blocked
             ],
-            "aliases": {}
+            "aliases": {},
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=False,  # Read-only mode
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Should only have GETs (writes blocked)
@@ -213,15 +239,15 @@ class TestCuration:
             "allowlist": [
                 ("get", "/shells"),
                 ("post", "/shells"),
-                ("delete", "/shells/{aasIdentifier}")
+                ("delete", "/shells/{aasIdentifier}"),
             ],
-            "aliases": {}
+            "aliases": {},
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=True,  # Writes enabled
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Should have both reads and writes
@@ -235,13 +261,13 @@ class TestCuration:
             "allowlist": [
                 ("get", "*")  # All GETs
             ],
-            "aliases": {}
+            "aliases": {},
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=False,
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Should have all GET operations
@@ -258,13 +284,13 @@ class TestCuration:
             "allowlist": [
                 ("*", "/shells")  # All methods on /shells
             ],
-            "aliases": {}
+            "aliases": {},
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=True,
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Should have both GET and POST on /shells
@@ -275,20 +301,17 @@ class TestCuration:
     def test_aliases_rename_operations(self, sample_official_spec):
         """Test that aliases rename operationIds."""
         curation_settings = {
-            "allowlist": [
-                ("get", "/shells"),
-                ("post", "/shells")
-            ],
+            "allowlist": [("get", "/shells"), ("post", "/shells")],
             "aliases": {
                 "GetAllAssetAdministrationShells": "list_shells",
-                "PostAssetAdministrationShell": "create_shell"
-            }
+                "PostAssetAdministrationShell": "create_shell",
+            },
         }
 
         curated = curate_openapi_spec(
             sample_official_spec,
             enable_writes=True,
-            curation_settings=curation_settings
+            curation_settings=curation_settings,
         )
 
         # Check renamed operationIds
@@ -299,8 +322,9 @@ class TestCuration:
 class TestCompletePipeline:
     """Test the complete pipeline: config → intersection → overlay → curation → MCP."""
 
-    def test_complete_pipeline_with_all_steps(self, tmp_path, sample_official_spec,
-                                               sample_implementation_spec, sample_overlay):
+    def test_complete_pipeline_with_all_steps(
+        self, tmp_path, sample_official_spec, sample_implementation_spec, sample_overlay
+    ):
         """Test complete pipeline with intersection, overlay, and curation."""
         # 1. Save specs to files
         official_path = tmp_path / "official.yaml"
@@ -325,14 +349,14 @@ class TestCompletePipeline:
                     "curation": {
                         "allowlist": [
                             ["get", "*"],  # All GETs
-                            ["post", "/shells"]  # Only POST to /shells
+                            ["post", "/shells"],  # Only POST to /shells
                         ],
                         "aliases": {
                             "list_shells": "list_shells",  # Already renamed by overlay
                             "create_shell": "create_shell",
-                            "get_shell": "get_shell"
-                        }
-                    }
+                            "get_shell": "get_shell",
+                        },
+                    },
                 }
             }
         }
@@ -350,18 +374,25 @@ class TestCompletePipeline:
         # Verify intersection worked (asset-information not in implementation)
         assert "/shells" in processed_spec["paths"]
         assert "/shells/{aasIdentifier}" in processed_spec["paths"]
-        assert "/shells/{aasIdentifier}/asset-information" not in processed_spec["paths"]
+        assert (
+            "/shells/{aasIdentifier}/asset-information" not in processed_spec["paths"]
+        )
 
         # Verify overlay worked (operationIds renamed)
         assert processed_spec["paths"]["/shells"]["get"]["operationId"] == "list_shells"
-        assert processed_spec["paths"]["/shells"]["post"]["operationId"] == "create_shell"
-        assert processed_spec["paths"]["/shells/{aasIdentifier}"]["get"]["operationId"] == "get_shell"
+        assert (
+            processed_spec["paths"]["/shells"]["post"]["operationId"] == "create_shell"
+        )
+        assert (
+            processed_spec["paths"]["/shells/{aasIdentifier}"]["get"]["operationId"]
+            == "get_shell"
+        )
 
         # 5. Curate spec
         curated_spec = curate_openapi_spec(
             processed_spec,
             enable_writes=True,
-            curation_settings=component_config.curation
+            curation_settings=component_config.curation,
         )
 
         # Verify curation worked (only allowed operations)
@@ -384,10 +415,7 @@ class TestCompletePipeline:
             "components": {
                 "aas-repo": {
                     "official_spec": str(official_path),
-                    "curation": {
-                        "allowlist": [["get", "*"]],
-                        "aliases": {}
-                    }
+                    "curation": {"allowlist": [["get", "*"]], "aliases": {}},
                 }
             }
         }
@@ -403,7 +431,7 @@ class TestCompletePipeline:
             component_config=component_config,
             base_url=BACKEND_URL,
             enable_writes=False,
-            log_level="WARNING"
+            log_level="WARNING",
         )
 
         # Verify server was created
@@ -438,11 +466,12 @@ class TestBackendConnectivity:
 
         for endpoint in endpoints:
             try:
-                response = httpx.get(f"{BACKEND_URL}{endpoint}", timeout=BACKEND_TIMEOUT)
+                response = httpx.get(
+                    f"{BACKEND_URL}{endpoint}", timeout=BACKEND_TIMEOUT
+                )
                 if response.status_code == 200:
                     return  # At least one endpoint works
             except Exception:
                 continue
 
         # If none work, that's okay - backend might not have health endpoints
-

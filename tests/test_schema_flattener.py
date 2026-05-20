@@ -8,13 +8,13 @@ These tests mirror real IDTA AAS spec patterns that cause FastMCP to fail
 when the spec is used unprocessed.
 """
 
-import pytest
 from aas_mcp_server.schema_flattener import flatten_spec_schemas
 
 
 # ---------------------------------------------------------------------------
 # Basic $ref resolution
 # ---------------------------------------------------------------------------
+
 
 def test_resolves_simple_ref():
     """A bare $ref in allOf is resolved to the target schema's properties."""
@@ -29,7 +29,10 @@ def test_resolves_simple_ref():
                 "Child": {
                     "allOf": [
                         {"$ref": "#/components/schemas/Base"},
-                        {"required": ["name"], "properties": {"name": {"type": "string"}}},
+                        {
+                            "required": ["name"],
+                            "properties": {"name": {"type": "string"}},
+                        },
                     ]
                 },
             }
@@ -58,13 +61,19 @@ def test_resolves_nested_ref_chain():
                 "B": {
                     "allOf": [
                         {"$ref": "#/components/schemas/A"},
-                        {"required": ["fieldB"], "properties": {"fieldB": {"type": "string"}}},
+                        {
+                            "required": ["fieldB"],
+                            "properties": {"fieldB": {"type": "string"}},
+                        },
                     ]
                 },
                 "C": {
                     "allOf": [
                         {"$ref": "#/components/schemas/B"},
-                        {"required": ["fieldC"], "properties": {"fieldC": {"type": "string"}}},
+                        {
+                            "required": ["fieldC"],
+                            "properties": {"fieldC": {"type": "string"}},
+                        },
                     ]
                 },
             }
@@ -81,6 +90,7 @@ def test_resolves_nested_ref_chain():
 # ---------------------------------------------------------------------------
 # IDTA AAS pattern: AssetAdministrationShell
 # ---------------------------------------------------------------------------
+
 
 def test_flattens_aas_shell_pattern():
     """
@@ -138,9 +148,15 @@ def test_flattens_aas_shell_pattern():
 
     assert "allOf" not in aas
     # All inherited + own properties present
-    assert {"modelType", "idShort", "id", "administration",
-            "embeddedDataSpecifications", "assetInformation", "submodels"} \
-        == set(aas["properties"].keys())
+    assert {
+        "modelType",
+        "idShort",
+        "id",
+        "administration",
+        "embeddedDataSpecifications",
+        "assetInformation",
+        "submodels",
+    } == set(aas["properties"].keys())
     # All required fields from entire chain
     assert {"modelType", "id", "assetInformation"} == set(aas["required"])
 
@@ -148,6 +164,7 @@ def test_flattens_aas_shell_pattern():
 # ---------------------------------------------------------------------------
 # Cycle detection
 # ---------------------------------------------------------------------------
+
 
 def test_breaks_direct_cycle():
     """A schema that references itself is broken with a $ref, not infinite recursion."""
@@ -221,7 +238,9 @@ def test_breaks_allof_cycle():
                                 "entityType": {"type": "string"},
                                 "statements": {
                                     "type": "array",
-                                    "items": {"$ref": "#/components/schemas/SubmodelElement_choice"},
+                                    "items": {
+                                        "$ref": "#/components/schemas/SubmodelElement_choice"
+                                    },
                                 },
                             },
                         }
@@ -238,6 +257,7 @@ def test_breaks_allof_cycle():
 # ---------------------------------------------------------------------------
 # No-op cases
 # ---------------------------------------------------------------------------
+
 
 def test_schema_without_allof_is_unchanged():
     """Schemas with no allOf or $ref pass through untouched."""
@@ -278,7 +298,10 @@ def test_required_deduplication():
                     "allOf": [
                         {"$ref": "#/components/schemas/Base"},
                         # id appears again in child required — should be deduped
-                        {"required": ["id", "name"], "properties": {"name": {"type": "string"}}},
+                        {
+                            "required": ["id", "name"],
+                            "properties": {"name": {"type": "string"}},
+                        },
                     ]
                 },
             }

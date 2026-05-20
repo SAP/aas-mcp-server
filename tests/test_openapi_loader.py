@@ -25,7 +25,10 @@ from aas_mcp_server.openapi_loader import (
 
 # Path to test fixtures
 OPENAPI_DIR = Path(__file__).parent.parent / "openapi"
-AAS_REPO_SPEC = OPENAPI_DIR / "AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml"
+AAS_REPO_SPEC = (
+    OPENAPI_DIR
+    / "AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml"
+)
 OVERLAYS_DIR = OPENAPI_DIR / "overlays"
 
 
@@ -95,7 +98,7 @@ class TestFilterPaths:
                 "/shells": {"get": {}, "post": {}},
                 "/shells/{id}": {"get": {}, "delete": {}},
                 "/submodels": {"get": {}},
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells"])
@@ -111,7 +114,7 @@ class TestFilterPaths:
             "openapi": "3.0.0",
             "paths": {
                 "/shells": {"get": {}, "post": {}, "delete": {}},
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells:get"])
@@ -127,7 +130,7 @@ class TestFilterPaths:
             "openapi": "3.0.0",
             "paths": {
                 "/shells": {"get": {}, "post": {}, "delete": {}, "put": {}},
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells:get,post"])
@@ -146,7 +149,7 @@ class TestFilterPaths:
                 "/shells": {"get": {}, "post": {}},
                 "/shells/{id}": {"get": {}, "put": {}, "delete": {}},
                 "/submodels": {"get": {}},
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells:get", "/shells/{id}:get,delete"])
@@ -168,7 +171,7 @@ class TestFilterPaths:
                     "get": {"operationId": "getShells"},
                     "post": {"operationId": "createShell"},
                 },
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells:get"])
@@ -186,7 +189,7 @@ class TestFilterPaths:
                 "/shells/{id}": {"get": {}},
                 "/submodels": {"get": {}},
                 "/submodels/{id}": {"get": {}},
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells", "/shells/{id}"])
@@ -205,7 +208,7 @@ class TestFilterPaths:
                     "get": {"operationId": "getShells"},
                     "post": {"operationId": "createShell"},
                 },
-            }
+            },
         }
 
         result = filter_paths(spec, ["/shells"])
@@ -215,10 +218,7 @@ class TestFilterPaths:
 
     def test_filter_empty_include_list(self):
         """Test filtering with empty include list."""
-        spec = {
-            "openapi": "3.0.0",
-            "paths": {"/shells": {"get": {}}}
-        }
+        spec = {"openapi": "3.0.0", "paths": {"/shells": {"get": {}}}}
 
         result = filter_paths(spec, [])
 
@@ -231,7 +231,7 @@ class TestFilterPaths:
             "paths": {
                 "/shells": {"get": {}},
                 "/submodels": {"get": {}},
-            }
+            },
         }
 
         filter_paths(spec, ["/shells"])
@@ -251,14 +251,18 @@ class TestGetFilterPathsFromEnv:
 
     def test_get_paths_with_methods(self):
         """Test getting filter paths with methods from environment variable."""
-        with patch.dict(os.environ, {"AAS_REPO_FILTER_PATHS": "/shells:get,post;/shells/{id}:get"}):
+        with patch.dict(
+            os.environ, {"AAS_REPO_FILTER_PATHS": "/shells:get,post;/shells/{id}:get"}
+        ):
             paths = get_filter_paths_from_env("aas-repo")
 
         assert paths == ["/shells:get,post", "/shells/{id}:get"]
 
     def test_get_paths_with_whitespace(self):
         """Test that whitespace is stripped from paths."""
-        with patch.dict(os.environ, {"AAS_REPO_FILTER_PATHS": " /shells ; /shells/{id} "}):
+        with patch.dict(
+            os.environ, {"AAS_REPO_FILTER_PATHS": " /shells ; /shells/{id} "}
+        ):
             paths = get_filter_paths_from_env("aas-repo")
 
         assert paths == ["/shells", "/shells/{id}"]
@@ -326,9 +330,7 @@ class TestLoadAndProcessOpenapi:
             pytest.skip(f"Test file not found: {AAS_REPO_SPEC}")
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir="nonexistent-dir"
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir="nonexistent-dir"
         )
 
         assert spec is not None
@@ -342,9 +344,7 @@ class TestLoadAndProcessOpenapi:
         os.environ["AAS_REPO_FILTER_PATHS"] = "/shells"
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir="nonexistent-dir"
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir="nonexistent-dir"
         )
 
         assert len(spec["paths"]) == 1
@@ -358,9 +358,7 @@ class TestLoadAndProcessOpenapi:
             pytest.skip("Overlay file not found")
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir=str(OVERLAYS_DIR)
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir=str(OVERLAYS_DIR)
         )
 
         # Check overlay was applied - operationId should be changed
@@ -377,9 +375,7 @@ class TestLoadAndProcessOpenapi:
         os.environ["AAS_REPO_FILTER_PATHS"] = "/shells"
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir=str(OVERLAYS_DIR)
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir=str(OVERLAYS_DIR)
         )
 
         # Check filtering was applied
@@ -389,7 +385,10 @@ class TestLoadAndProcessOpenapi:
         # Check overlay was applied
         assert spec["paths"]["/shells"]["get"]["operationId"] == "list_shells"
         assert spec["paths"]["/shells"]["post"]["operationId"] == "create_shell"
-        assert spec["paths"]["/shells"]["get"]["summary"] == "List all Asset Administration Shells"
+        assert (
+            spec["paths"]["/shells"]["get"]["summary"]
+            == "List all Asset Administration Shells"
+        )
 
     def test_filter_multiple_paths_with_overlay(self, cleanup_env):
         """Test filtering multiple paths and applying overlay."""
@@ -399,9 +398,7 @@ class TestLoadAndProcessOpenapi:
         os.environ["AAS_REPO_FILTER_PATHS"] = "/shells;/shells/{aasIdentifier}"
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir=str(OVERLAYS_DIR)
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir=str(OVERLAYS_DIR)
         )
 
         assert len(spec["paths"]) == 2
@@ -428,9 +425,7 @@ class TestOverlayContent:
         os.environ["AAS_REPO_FILTER_PATHS"] = "/shells"
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir=str(OVERLAYS_DIR)
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir=str(OVERLAYS_DIR)
         )
 
         # Verify GET /shells operationId
@@ -451,16 +446,19 @@ class TestOverlayContent:
         os.environ["AAS_REPO_FILTER_PATHS"] = "/shells"
 
         spec = load_and_process_openapi(
-            str(AAS_REPO_SPEC),
-            "aas-repo",
-            overlay_base_dir=str(OVERLAYS_DIR)
+            str(AAS_REPO_SPEC), "aas-repo", overlay_base_dir=str(OVERLAYS_DIR)
         )
 
         # Verify summaries were updated
-        assert spec["paths"]["/shells"]["get"]["summary"] == "List all Asset Administration Shells"
-        assert spec["paths"]["/shells"]["post"]["summary"] == "Create a new Asset Administration Shell"
+        assert (
+            spec["paths"]["/shells"]["get"]["summary"]
+            == "List all Asset Administration Shells"
+        )
+        assert (
+            spec["paths"]["/shells"]["post"]["summary"]
+            == "Create a new Asset Administration Shell"
+        )
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

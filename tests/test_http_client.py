@@ -19,6 +19,7 @@ import httpx
 from aas_mcp_server.http_client import (
     BearerTokenAuth,
     build_async_client,
+    validate_backend_url,
     HEADER_ACCEPT,
     HEADER_AUTHORIZATION,
     CONTENT_TYPE_JSON,
@@ -119,7 +120,10 @@ class TestBearerTokenAuth:
 
         request = self._run_auth_flow(BearerTokenAuth())
 
-        assert "eyJhbGciOiJSUzI1NiJ9.payload.signature" in request.headers[HEADER_AUTHORIZATION]
+        assert (
+            "eyJhbGciOiJSUzI1NiJ9.payload.signature"
+            in request.headers[HEADER_AUTHORIZATION]
+        )
 
 
 class TestConstants:
@@ -134,3 +138,103 @@ class TestConstants:
     def test_auth_bearer_format(self):
         assert "{token}" in AUTH_BEARER_FORMAT
         assert AUTH_BEARER_FORMAT.startswith("Bearer ")
+
+
+class TestValidateBackendUrl:
+    """Tests for validate_backend_url — SSRF prevention."""
+
+    def test_valid_http_url_accepted(self):
+        validate_backend_url("http://aas-backend:8081")
+
+    def test_valid_https_url_accepted(self):
+        validate_backend_url("https://aas.example.com/api")
+
+    def test_localhost_accepted(self):
+        """Localhost is always allowed for local development."""
+        validate_backend_url("http://localhost:8081")
+        validate_backend_url("http://127.0.0.1:8081")
+
+    def test_file_scheme_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="scheme"):
+            validate_backend_url("file:///etc/passwd")
+
+    def test_ftp_scheme_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="scheme"):
+            validate_backend_url("ftp://internal-server/data")
+
+    def test_cloud_metadata_ip_rejected(self):
+        """169.254.169.254 (AWS/GCP/Azure metadata) must be blocked."""
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://169.254.169.254/latest/meta-data/")
+
+    def test_private_10_network_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://10.0.0.1:8080")
+
+    def test_private_192_168_network_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://192.168.1.100:8080")
+
+    def test_private_172_16_network_rejected(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://172.16.0.1:8080")
+
+    def test_ipv4_mapped_ipv6_cloud_metadata_rejected(self):
+        """IPv4-mapped IPv6 form of 169.254.169.254 must be blocked (bypass attempt)."""
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://[::ffff:169.254.169.254]/")
+
+    def test_ipv4_mapped_ipv6_private_network_rejected(self):
+        """IPv4-mapped IPv6 form of 10.0.0.1 must be blocked."""
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://[::ffff:10.0.0.1]:8080")
+
+    def test_unspecified_address_rejected(self):
+        """0.0.0.0 is unspecified and must be rejected."""
+        import pytest
+
+        with pytest.raises(ValueError, match="private"):
+            validate_backend_url("http://0.0.0.0:8080")
+
+    def test_dns_resolves_to_private_ip_rejected(self):
+        """Hostname that resolves to a private IP must be blocked."""
+        import pytest
+        from unittest.mock import patch
+
+        with patch("aas_mcp_server.http_client.socket.getaddrinfo") as mock_dns:
+            # Simulate hostname resolving to cloud metadata IP
+            mock_dns.return_value = [(None, None, None, None, ("169.254.169.254", 80))]
+            with pytest.raises(ValueError, match="private"):
+                validate_backend_url("http://evil.example.com/")
+
+    def test_dns_resolution_failure_allows_hostname(self):
+        """DNS failure at startup is fail-open (backend may not be reachable yet)."""
+        from unittest.mock import patch
+
+        with patch(
+            "aas_mcp_server.http_client.socket.getaddrinfo",
+            side_effect=OSError("DNS failure"),
+        ):
+            # Should NOT raise — DNS failure is allowed at startup time
+            validate_backend_url("http://aas-backend-not-yet-reachable:8081")
+
+    def test_no_redirects_on_client(self):
+        """Client must not follow redirects to prevent open-redirect SSRF."""
+        client = build_async_client("http://localhost:8081")
+        assert client.follow_redirects is False

@@ -5,8 +5,6 @@
 Pytest configuration for AAS MCP Server tests.
 """
 
-import pytest
-
 
 def pytest_addoption(parser):
     """Add custom pytest options."""
@@ -14,12 +12,13 @@ def pytest_addoption(parser):
         "--run-integration",
         action="store_true",
         default=False,
-        help="Run integration tests that require backend services"
+        help="Run integration tests that require backend services",
     )
 
 
 def pytest_configure(config):
     """Configure pytest."""
     config.addinivalue_line(
-        "markers", "integration: mark test as integration test requiring backend services"
+        "markers",
+        "integration: mark test as integration test requiring backend services",
     )

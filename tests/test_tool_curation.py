@@ -114,7 +114,10 @@ class TestCurateOpenApiSpec:
                         OPENAPI_KEY_PARAMETERS: [
                             {
                                 OPENAPI_KEY_NAME: PARAM_NAME_LIMIT,
-                                OPENAPI_KEY_SCHEMA: {"type": "integer", "maximum": 1000},
+                                OPENAPI_KEY_SCHEMA: {
+                                    "type": "integer",
+                                    "maximum": 1000,
+                                },
                             }
                         ],
                     }
@@ -207,7 +210,10 @@ class TestCapLimitParameter:
 
         result = _cap_limit_parameter(op, max_limit=50)
 
-        assert result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM] == 50
+        assert (
+            result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == 50
+        )
 
     def test_caps_limit_parameter_with_capitalized_name(self):
         """Test that 'Limit' parameter is capped."""
@@ -222,7 +228,10 @@ class TestCapLimitParameter:
 
         result = _cap_limit_parameter(op, max_limit=50)
 
-        assert result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM] == 50
+        assert (
+            result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == 50
+        )
 
     def test_does_not_modify_other_parameters(self):
         """Test that non-limit parameters are not modified."""
@@ -237,7 +246,10 @@ class TestCapLimitParameter:
 
         result = _cap_limit_parameter(op, max_limit=50)
 
-        assert result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM] == 1000
+        assert (
+            result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == 1000
+        )
 
     def test_handles_parameter_without_schema(self):
         """Test that parameters without schema are handled."""
@@ -284,7 +296,10 @@ class TestCapLimitParameter:
         # Function returns the modified operation
         assert result is op
         # The operation is modified in place
-        assert result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM] == 50
+        assert (
+            result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == 50
+        )
 
 
 class TestConstants:
@@ -344,7 +359,9 @@ class TestCurationSettings:
             "allowlist": {(HTTP_METHOD_GET, "/custom")},
         }
 
-        result = curate_openapi_spec(spec, enable_writes=False, curation_settings=custom_curation)
+        result = curate_openapi_spec(
+            spec, enable_writes=False, curation_settings=custom_curation
+        )
 
         # Only /custom should be present (from custom allowlist)
         assert "/custom" in result[OPENAPI_KEY_PATHS]
@@ -354,9 +371,7 @@ class TestCurationSettings:
         """Test that custom aliases are used when provided."""
         spec = {
             OPENAPI_KEY_PATHS: {
-                "/shells": {
-                    HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "GetShells"}
-                }
+                "/shells": {HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "GetShells"}}
             }
         }
 
@@ -365,9 +380,16 @@ class TestCurationSettings:
             "aliases": {"GetShells": "fetch_all_shells"},
         }
 
-        result = curate_openapi_spec(spec, enable_writes=False, curation_settings=custom_curation)
+        result = curate_openapi_spec(
+            spec, enable_writes=False, curation_settings=custom_curation
+        )
 
-        assert result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][OPENAPI_KEY_OPERATION_ID] == "fetch_all_shells"
+        assert (
+            result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][
+                OPENAPI_KEY_OPERATION_ID
+            ]
+            == "fetch_all_shells"
+        )
 
     def test_falls_back_to_defaults_when_no_settings(self):
         """Test that default allowlist and aliases are used when curation_settings is None."""
@@ -399,13 +421,17 @@ class TestCurationSettings:
             # No aliases specified - should use defaults
         }
 
-        result = curate_openapi_spec(spec, enable_writes=False, curation_settings=custom_curation)
+        result = curate_openapi_spec(
+            spec, enable_writes=False, curation_settings=custom_curation
+        )
 
         # Should still apply default alias if it exists
         expected_alias = OPERATION_ID_ALIASES.get("GetAllAssetAdministrationShells")
         if expected_alias:
             assert (
-                result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][OPENAPI_KEY_OPERATION_ID]
+                result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][
+                    OPENAPI_KEY_OPERATION_ID
+                ]
                 == expected_alias
             )
 
@@ -422,14 +448,18 @@ class TestCurationSettings:
             "aliases": {"GetShells": "custom_list_shells"},
         }
 
-        result = curate_openapi_spec(spec, enable_writes=False, curation_settings=custom_curation)
+        result = curate_openapi_spec(
+            spec, enable_writes=False, curation_settings=custom_curation
+        )
 
         # Should use DEFAULT_ALLOWLIST for filtering
         # And custom alias for renaming
         if (HTTP_METHOD_GET, "/shells") in DEFAULT_ALLOWLIST:
             assert "/shells" in result[OPENAPI_KEY_PATHS]
             assert (
-                result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][OPENAPI_KEY_OPERATION_ID]
+                result[OPENAPI_KEY_PATHS]["/shells"][HTTP_METHOD_GET][
+                    OPENAPI_KEY_OPERATION_ID
+                ]
                 == "custom_list_shells"
             )
 
