@@ -102,32 +102,38 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          # load=true exports the image to the local Docker daemon so
+          # subsequent docker run steps can find it by tag.
+          # push=false keeps it local only (no registry push).
+          load: true
           push: false
           tags: aas-mcp-server:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test Docker image
+      - name: Smoke test — container starts and responds to MCP initialize
         run: |
-          # Create test config
+          # Create a minimal config pointing at the fixture spec that ships
+          # in the repository (the image itself contains no spec files).
           mkdir -p test-config
           cat > test-config/config.yaml << 'CONFIGEOF'
           components:
             aas-repo:
-              official_spec: /app/docs/openapi/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+              official_spec: /app/spec/sample_official_spec.yaml
               curation:
                 allowlist:
                   - [get, "*"]
                 aliases: {}
           CONFIGEOF
 
-          # Test that Docker container starts
-          echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}}}' | \
-          docker run -i \
-            -v $(pwd)/test-config/config.yaml:/app/config/config.yaml \
-            -v $(pwd)/docs:/app/docs \
+          # Send a single MCP initialize request and verify the server name
+          # in the response. The container exits naturally after stdio closes.
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}' | \
+          docker run --rm -i \
+            -v "$(pwd)/test-config/config.yaml:/app/config/config.yaml" \
+            -v "$(pwd)/tests/fixtures/sample_official_spec.yaml:/app/spec/sample_official_spec.yaml" \
             -e AAS_COMPONENT=aas-repo \
-            -e AAS_BASE_URL=http://host.docker.internal:8081 \
+            -e AAS_BASE_URL=http://localhost:8081 \
             aas-mcp-server:test | \
           jq -e '.result.serverInfo.name == "AAS MCP Server (aas-repo)"'
 
