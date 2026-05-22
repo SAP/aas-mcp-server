@@ -8,16 +8,22 @@ name: Version Bump
 #   feat!: / fix!:  → major  (0.1.0 → 1.0.0)
 #
 # The bumped version is committed back to the PR branch before merge.
+#
+# DISABLED: workflow trigger commented out to preserve 0.1.0 for initial PyPI release.
+# Re-enable by uncommenting the `on:` block below.
+
+# on:
+#   pull_request:
+#     branches:
+#       - main
+#     types:
+#       - opened
+#       - reopened
+#       - edited
+#       - synchronize
 
 on:
-  pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - reopened
-      - edited
-      - synchronize
+  workflow_dispatch: # manual trigger only while disabled
 
 jobs:
   bump-version:
