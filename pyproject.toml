@@ -1,6 +1,6 @@
 [project]
 name = "aas-mcp-server"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open-source MCP server for AAS (Asset Administration Shell) APIs using OpenAPI"
 readme = "README.md"
 requires-python = ">=3.12"
