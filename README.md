@@ -1,5 +1,8 @@
+[![REUSE status](https://api.reuse.software/badge/github.com/SAP/aas-mcp-server)](https://api.reuse.software/info/github.com/SAP/aas-mcp-server)
+
 # AAS MCP Server
 
+## About this project
 > OpenAPI-to-MCP bridge for Asset Administration Shell (AAS) APIs
 
 An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Model Context Protocol tools, enabling LLM agents to interact with any AAS-compliant backend.
@@ -7,7 +10,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-## Quick Start
+## Requirements and Setup
 
 ### Prerequisites
 
@@ -126,6 +129,7 @@ the full four-component example.
   }
 }
 ```
+
 
 ### Claude CLI (Claude Code)
 
@@ -282,6 +286,10 @@ tests/run_tests.sh
 # With integration tests (requires backend on port 8081)
 tests/run_tests.sh --integration
 ```
+
+## Support, Feedback, Contributing
+
+This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/SAP/aas-mcp-server/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
 
 ## Security / Disclosure
 
