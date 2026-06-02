@@ -184,6 +184,48 @@ components:
 #   Maximum MCP tool invocations per authenticated client per minute.
 #
 # =============================================================================
+# Environment Variables — Backend Token Strategy
+# =============================================================================
+#
+# Controls how the MCP server authenticates to the AAS backend API.
+#
+# BACKEND_AUTH_STRATEGY (Optional, default: forward)
+#   Which strategy to use for backend calls:
+#     forward        - Forward the upstream user token as-is. Default when
+#                      BACKEND_AUTH_AUDIENCE is not set. Works when the
+#                      backend accepts the same token the user authenticated
+#                      with (same IdP, same audience).
+#     token_exchange - RFC 8693 token exchange. Trades the user's upstream
+#                      token for a backend-scoped token. Preserves user
+#                      identity (sub claim). Auto-selected when
+#                      BACKEND_AUTH_AUDIENCE is set.
+#     none           - No Authorization header. For public backends or
+#                      backends using other auth (e.g. mTLS).
+#
+# BACKEND_AUTH_AUDIENCE (Optional)
+#   OAuth client ID of the AAS backend application. When set, auto-selects
+#   token_exchange strategy. The issued token will have aud == this value.
+#   Example: -e BACKEND_AUTH_AUDIENCE=my-aas-backend-client-id
+#
+# BACKEND_AUTH_TOKEN_ENDPOINT (Optional)
+#   Full URL of the token endpoint for token exchange.
+#   Defaults to <OAUTH_ISSUER_URL>/oauth2/token when not set.
+#   Set explicitly for cross-IdP scenarios (user IdP != backend IdP).
+#   Example: -e BACKEND_AUTH_TOKEN_ENDPOINT=https://idp.example.com/oauth2/token
+#
+# BACKEND_AUTH_SCOPE (Optional)
+#   Space-separated scopes to request in the token exchange.
+#   Example: -e BACKEND_AUTH_SCOPE="aas.read aas.write"
+#
+# BACKEND_AUTH_CLIENT_ID (Optional, default: OAUTH_CLIENT_ID)
+#   Client ID for authenticating the token exchange request.
+#   Set only if the MCP server uses a different client for backend token
+#   exchange than for user authentication.
+#
+# BACKEND_AUTH_CLIENT_SECRET (Optional, default: OAUTH_CLIENT_SECRET)
+#   Client secret for BACKEND_AUTH_CLIENT_ID.
+#
+# =============================================================================
 # Environment Variables — Server / Transport
 # =============================================================================
 #
@@ -197,7 +239,7 @@ components:
 # CONFIG_PATH              Path to this config file
 #
 # =============================================================================
-# Docker example (SAP IAS):
+# Docker example (SAP IAS, token_exchange for backend):
 # =============================================================================
 #
 #   docker run \
@@ -213,8 +255,12 @@ components:
 #     -e OAUTH_AUDIENCE=cf4b45a9-02ba-4f17-ab95-f677b0196afa \
 #     -e OAUTH_SERVER_BASE_URL=http://localhost:8000 \
 #     -e OAUTH_JWT_SIGNING_KEY=your-stable-signing-secret \
+#     -e BACKEND_AUTH_AUDIENCE=your-aas-backend-client-id \
 #     -p 8000:8000 \
 #     aas-mcp-server
+#
+# BACKEND_AUTH_TOKEN_ENDPOINT defaults to <OAUTH_ISSUER_URL>/oauth2/token.
+# Set it explicitly when the backend uses a different IdP.
 #
 # =============================================================================
 # IdP application registration checklist
