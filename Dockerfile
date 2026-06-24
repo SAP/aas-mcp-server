@@ -1,6 +1,6 @@
 # Pin the base image to a specific digest for supply chain integrity
 # Update this digest when intentionally upgrading the base image.
-FROM python:3.12-slim@sha256:401f6e1a67dad31a1bd78e9ad22d0ee0a3b52154e6bd30e90be696bb6a3d7461
+FROM python:3.14-slim@sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061
 
 WORKDIR /app
 
