@@ -190,7 +190,8 @@ impl-specs/
 
 localtesting
 
-# Internal SAP working files — must not be published to public GitHub
+# Internal working files
 ~$*
 openspec/
 .opencode/
+

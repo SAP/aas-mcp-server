@@ -4,25 +4,32 @@
 """
 HTTP client configuration for AAS MCP Server.
 
-Authentication uses a custom httpx.Auth subclass (BearerTokenAuth) that reads
-the validated OAuth access token from FastMCP's request context via
-get_access_token() on every outbound request. This works correctly across all
-FastMCP versions because it does not rely on get_http_headers(), which in
-FastMCP >=3.3 explicitly excludes the Authorization header from forwarding.
+Authentication uses a custom httpx.AsyncAuth subclass (BearerTokenAuth) that
+delegates to a BackendTokenProvider to obtain the token for every outbound
+request. This supports multiple strategies:
 
-For stdio transport (or when OAuth is not configured), get_access_token()
-returns None and no Authorization header is added.
+- ForwardStrategy (default): reads the validated OAuth access token from
+  FastMCP's request context via get_access_token() on every outbound request.
+- TokenExchangeStrategy: performs RFC 8693 token exchange to obtain a
+  backend-scoped token that preserves user identity.
+- NoneStrategy: adds no Authorization header (public or mTLS backends).
+
+For stdio transport (or when OAuth is not configured), ForwardStrategy returns
+None and no Authorization header is added.
 """
 
 import ipaddress
+import logging
 import math
 import os
-from typing import Generator
+from typing import AsyncGenerator
 from urllib.parse import urlparse
 
 import httpx
-from fastmcp.server.dependencies import get_access_token
 
+logger = logging.getLogger(__name__)
+
+from .backend_auth import BackendTokenProvider, ForwardStrategy
 from .constants import (
     ENV_AAS_HTTP_TIMEOUT,
     DEFAULT_HTTP_TIMEOUT,
@@ -134,35 +141,56 @@ def validate_backend_url(url: str) -> None:
 
 class BearerTokenAuth(httpx.Auth):
     """
-    httpx.Auth implementation that injects the current request's OAuth Bearer
-    token into every outbound AAS backend call.
+    httpx.Auth implementation that obtains a bearer token via a
+    BackendTokenProvider and injects it into every outbound AAS backend call.
 
-    Reads the token from FastMCP's get_access_token() at request time, so each
-    tool invocation uses the token belonging to that specific MCP session user.
-    Returns no Authorization header on stdio transport or when OAuth is not
-    configured (get_access_token() returns None in those cases).
+    The provider is called at request time so each tool invocation uses the
+    token appropriate for that specific MCP session / strategy.
+
+    Overrides async_auth_flow (used by httpx.AsyncClient) to avoid bridging
+    async/sync contexts — the server runs inside an asyncio event loop and
+    calling run_until_complete() from within a running loop raises RuntimeError.
+
+    Args:
+        provider: Backend token provider. Defaults to ForwardStrategy (current
+                  behaviour: forward upstream token from FastMCP context).
     """
 
-    def auth_flow(
+    def __init__(self, provider: BackendTokenProvider | None = None) -> None:
+        self._provider: BackendTokenProvider = provider if provider is not None else ForwardStrategy()
+
+    async def async_auth_flow(
         self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response, None]:
-        access_token = get_access_token()
-        if access_token is not None:
-            request.headers[HEADER_AUTHORIZATION] = AUTH_BEARER_FORMAT.format(
-                token=access_token.token
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        token_str = await self._provider.get_token()
+        if token_str is not None:
+            logger.debug(
+                "Backend token obtained via %s: length=%d",
+                type(self._provider).__name__,
+                len(token_str),
+            )
+            request.headers[HEADER_AUTHORIZATION] = AUTH_BEARER_FORMAT.format(token=token_str)
+        else:
+            logger.debug(
+                "No backend token from %s — no Authorization header added",
+                type(self._provider).__name__,
             )
         yield request
 
 
-def build_async_client(base_url: str) -> httpx.AsyncClient:
+def build_async_client(
+    base_url: str,
+    backend_token_provider: BackendTokenProvider | None = None,
+) -> httpx.AsyncClient:
     """
-    Build an async HTTP client that forwards the OAuth Bearer token
-    per-request via BearerTokenAuth.
+    Build an async HTTP client configured with the given backend token strategy.
 
     Validates base_url to prevent SSRF attacks before creating the client.
 
     Args:
-        base_url: Base URL for the AAS backend
+        base_url: Base URL for the AAS backend.
+        backend_token_provider: Token provider for backend auth. Defaults to
+                                 ForwardStrategy (forward upstream token as-is).
 
     Returns:
         Configured httpx.AsyncClient instance
@@ -190,7 +218,7 @@ def build_async_client(base_url: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=base_url,
         headers={HEADER_ACCEPT: CONTENT_TYPE_JSON},
-        auth=BearerTokenAuth(),
+        auth=BearerTokenAuth(provider=backend_token_provider),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
     )

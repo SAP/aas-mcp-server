@@ -11,13 +11,12 @@ static tokens without needing a real OAuth provider).
 Covers:
 - 5.2: Per-request auth (session hijacking prevention)
 - 5.3: Token in query string rejected (MCP spec §5.1.1)
-- 5.5: Audience warning test (startup log when OAUTH_AUDIENCE not set)
 - 6.1: Valid/invalid/expired/wrong-scope token responses
 - 6.2: stdio transport — no auth required
 - 6.3: OAuth discovery endpoint accessible without auth
+- 6.4: Missing OAUTH_CLIENT_ID raises ValueError
 """
 
-import logging
 import os
 import time
 from pathlib import Path
@@ -31,7 +30,7 @@ from fastmcp import FastMCP
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 from fastmcp.utilities.tests import run_server_async
 
-from aas_mcp_server.server import build_jwt_verifier, build_mcp_server
+from aas_mcp_server.server import build_auth_provider, build_mcp_server
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +54,6 @@ TEST_SERVER_NAME = "test-server"
 # A plausible OAuth issuer URL used in unit tests (no network calls are made)
 TEST_ISSUER_URL = "https://idp.example.com/realms/test"
 TEST_AUDIENCE = "aas-mcp-server"
-TEST_JWKS_URI_CUSTOM = "https://idp.example.com/custom/jwks"
 
 # Seconds that "expired" tokens are past their expiry
 EXPIRED_OFFSET_SECONDS = 3600
@@ -274,12 +272,14 @@ def test_stdio_build_has_no_auth():
 
 @pytest.mark.asyncio
 async def test_oauth_discovery_endpoint_no_auth_required():
-    """6.3: The well-known discovery endpoint must NOT require authentication.
+    """6.3: The well-known OAuth discovery endpoint must NOT require authentication.
 
-    With StaticTokenVerifier (pure resource server mode), FastMCP does NOT
-    serve a discovery document (returns 404). Clients fall back to the
-    external OAuth provider's well-known endpoint per MCP spec. The key
-    assertion is that the endpoint does NOT return 401/403.
+    With StaticTokenVerifier (used in unit tests), FastMCP does not serve
+    /.well-known/oauth-authorization-server (returns 404). The key assertion
+    is that the endpoint is not auth-gated (no 401/403).
+
+    In production with OIDCProxy, this endpoint returns 200 with full RFC 8414
+    metadata — verified by integration testing against a real IdP.
     """
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
@@ -293,23 +293,15 @@ async def test_oauth_discovery_endpoint_no_auth_required():
 
 
 # ---------------------------------------------------------------------------
-# 5.5 — Audience warning test
+# 6.4 — Missing OAUTH_CLIENT_ID raises ValueError
 # ---------------------------------------------------------------------------
 
 
-def test_warning_logged_when_audience_not_set(caplog):
-    """5.5: Startup WARNING is emitted when OAUTH_ISSUER_URL is set
-    but OAUTH_AUDIENCE is not — GAP-1 (token passthrough) mitigation.
+def test_missing_client_id_raises_when_issuer_set():
+    """6.4: build_auth_provider raises ValueError when OAUTH_ISSUER_URL is set
+    but OAUTH_CLIENT_ID is not — OIDCProxy requires client credentials.
     """
-    with (
-        patch.dict(os.environ, {"OAUTH_ISSUER_URL": TEST_ISSUER_URL}),
-        caplog.at_level(logging.WARNING, logger="aas_mcp_server.server"),
-    ):
-        build_jwt_verifier()
-
-    warning_messages = [
-        r.message for r in caplog.records if r.levelno >= logging.WARNING
-    ]
-    assert any("OAUTH_AUDIENCE" in m for m in warning_messages), (
-        f"Expected OAUTH_AUDIENCE warning, got: {warning_messages}"
-    )
+    env = {"OAUTH_ISSUER_URL": "https://idp.example.com"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ValueError, match="OAUTH_CLIENT_ID"):
+            build_auth_provider(host="127.0.0.1", port=8000)
