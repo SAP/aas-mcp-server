@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Customer-facing SemVer, e.g. 0.2.0 — WITHOUT the leading v"
+        type: string
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout (full history for tag guard)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be X.Y.Z (no leading v), got: $VERSION"
+            exit 1
+          fi
+
+      - name: Monotonic + uniqueness guard (re-run-safe)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)
+          TAG_REF=$(git rev-parse -q --verify "refs/tags/v${VERSION}" || true)
+          HEAD=$(git rev-parse HEAD)
+
+          if [ -n "$TAG_REF" ]; then
+            # Tag exists — allow only if it points at HEAD (re-run recovery)
+            if [ "$TAG_REF" != "$HEAD" ]; then
+              echo "::error::v${VERSION} already exists on a different commit. Cannot re-tag."
+              exit 1
+            fi
+            echo "Re-run detected: v${VERSION} already points at HEAD — continuing idempotently."
+            echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
+            # Monotonic check
+            if [ -n "$LATEST" ] && [ "$LATEST" != "v${VERSION}" ]; then
+              TOP=$(printf '%s\nv%s\n' "$LATEST" "$VERSION" | sort -V | tail -n1)
+              if [ "$TOP" != "v${VERSION}" ]; then
+                echo "::error::v${VERSION} must be strictly greater than $LATEST"
+                exit 1
+              fi
+            fi
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push versioned image (FIRST — immutable)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/sap/aas-mcp-server:${{ inputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create and push tag (idempotent)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$TAG_EXISTS" = "false" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "v${VERSION}" -m "Release v${VERSION}"
+            git push origin "v${VERSION}"
+          else
+            echo "Tag v${VERSION} already exists at HEAD — skipping tag creation."
+          fi
+
+      - name: Create GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release create "v${VERSION}" \
+              --verify-tag \
+              --generate-notes \
+              --title "v${VERSION}"
+          else
+            echo "Release v${VERSION} already exists — skipping creation."
+          fi
+
+      - name: Update :latest tag (LAST)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/sap/aas-mcp-server:latest \
+            ghcr.io/sap/aas-mcp-server:${VERSION}
