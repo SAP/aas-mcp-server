@@ -20,7 +20,7 @@ The two tracks are **intentionally decoupled**: intermediate internal version nu
 That's it. The workflow will:
 
 - Validate the format (`X.Y.Z`) and enforce the **monotonic rule** (must be strictly greater than the last `v*` tag).
-- Push the immutable versioned image **first**: `ghcr.io/sap/aas-mcp-server:<version>`
+- Build and push a **multi-architecture image** (`linux/amd64` + `linux/arm64`) with **OCI standard labels** (title, description, source URL, version, license) — the versioned image is pushed **first** so it is immutable before the tag is created: `ghcr.io/sap/aas-mcp-server:<version>`
 - Create and push tag `v<version>`.
 - Publish a GitHub Release at `v<version>` with **auto-generated release notes** that bundle every PR merged since the previous release tag (categorized by label).
 - Update `:latest` **last**, so a failure mid-run never moves `:latest` off the previous good release.

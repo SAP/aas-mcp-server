@@ -62,6 +62,9 @@ jobs:
             fi
           fi
 
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -72,12 +75,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push versioned image (FIRST — immutable)
+      - name: Generate OCI image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/sap/aas-mcp-server
+          tags: |
+            type=raw,value=${{ inputs.version }}
+          labels: |
+            org.opencontainers.image.title=AAS MCP Server
+            org.opencontainers.image.description=OpenAPI-to-MCP bridge for Asset Administration Shell (AAS) APIs
+            org.opencontainers.image.url=https://github.com/SAP/aas-mcp-server
+            org.opencontainers.image.source=https://github.com/SAP/aas-mcp-server
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push versioned image (FIRST — immutable, multi-arch)
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          tags: ghcr.io/sap/aas-mcp-server:${{ inputs.version }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
