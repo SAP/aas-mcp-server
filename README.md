@@ -287,6 +287,10 @@ tests/run_tests.sh
 tests/run_tests.sh --integration
 ```
 
+## Releasing
+
+See [RELEASING.md](RELEASING.md) for the release procedure, the two-track versioning model, and the one-time GHCR preflight checklist.
+
 ## Support, Feedback, Contributing
 
 This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/SAP/aas-mcp-server/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
