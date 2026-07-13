@@ -203,6 +203,28 @@ components:
 #   auto-manages keys (ephemeral on Linux — tokens invalidated on restart).
 #   For production, set to a stable secret loaded from a secrets manager.
 #
+# OAUTH_SESSION_STORE_URL  (Optional)
+#   Connection URL for an external OAuth session store. The session store holds
+#   OAuth client registrations, PKCE state, and short-lived token metadata.
+#
+#   Default (no env var): in-memory store — fast, zero-dependency, but state is
+#   lost on process restart (clients re-authenticate once) and incompatible with
+#   multi-replica deployments (PKCE /authorize and /callback must hit the same
+#   process). This is fine for single-instance Kyma / Docker deployments.
+#
+#   For multi-replica deployments: either configure sticky sessions at the load
+#   balancer (e.g. Kubernetes sessionAffinity: ClientIP) so all requests from
+#   one OAuth flow land on the same pod, OR use an external shared store:
+#
+#   Redis:
+#     OAUTH_SESSION_STORE_URL=redis://redis-host:6379/0
+#     OAUTH_SESSION_STORE_URL=rediss://redis-host:6380/0  (TLS)
+#     Requires: pip install aas-mcp-server[redis]
+#
+#   PostgreSQL:
+#     OAUTH_SESSION_STORE_URL=postgresql://user:pass@pg-host:5432/dbname
+#     Requires: pip install aas-mcp-server[postgresql]
+#
 # MCP_RATE_LIMIT_PER_MINUTE  (Optional, default: 60)
 #   Maximum MCP tool invocations per authenticated client per minute.
 #

@@ -12,6 +12,7 @@ from aas_mcp_server.backend_auth import (
     ForwardStrategy,
     NoneStrategy,
     TokenExchangeStrategy,
+    _discover_token_endpoint,
     build_backend_token_provider,
 )
 from aas_mcp_server.constants import (
@@ -302,17 +303,26 @@ class TestBuildBackendTokenProvider:
         with pytest.raises(ValueError, match="BACKEND_AUTH_STRATEGY"):
             build_backend_token_provider()
 
+    @patch("aas_mcp_server.backend_auth.httpx.get")
     @patch.dict(os.environ, {
         ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
         ENV_OAUTH_CLIENT_ID: "mcp-client-id",
         ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
         ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
     }, clear=True)
-    def test_token_endpoint_discovered_from_issuer_when_not_explicit(self):
-        """When BACKEND_AUTH_TOKEN_ENDPOINT not set, token endpoint is derived from OAUTH_ISSUER_URL."""
+    def test_token_endpoint_discovered_from_issuer_when_not_explicit(self, mock_get):
+        """When BACKEND_AUTH_TOKEN_ENDPOINT not set, token endpoint is discovered via OIDC metadata."""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json.return_value = {
+            "token_endpoint": "https://idp.example.com/oauth2/token"
+        }
         provider = build_backend_token_provider()
         assert isinstance(provider, TokenExchangeStrategy)
-        assert "idp.example.com" in provider.token_endpoint
+        assert provider.token_endpoint == "https://idp.example.com/oauth2/token"
+        mock_get.assert_called_once_with(
+            "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
+        )
 
     @patch.dict(os.environ, {
         ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
@@ -370,3 +380,71 @@ class TestTokenExchangeStrategyClose:
                 pass
 
         mock_client.aclose.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# _discover_token_endpoint
+# ---------------------------------------------------------------------------
+
+class TestDiscoverTokenEndpoint:
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_success_returns_token_endpoint(self, mock_get):
+        """Returns token_endpoint from the OIDC discovery document."""
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json.return_value = {
+            "token_endpoint": "https://idp.example.com/oauth2/token",
+            "issuer": "https://idp.example.com",
+        }
+        result = _discover_token_endpoint("https://idp.example.com")
+        assert result == "https://idp.example.com/oauth2/token"
+        mock_get.assert_called_once_with(
+            "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
+        )
+
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_strips_trailing_slash_from_issuer(self, mock_get):
+        """Trailing slash on issuer URL is normalised before constructing discovery URL."""
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
+        _discover_token_endpoint("https://idp.example.com/")
+        mock_get.assert_called_once_with(
+            "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
+        )
+
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_strips_existing_openid_configuration_suffix(self, mock_get):
+        """Issuer URL that already ends with openid-configuration path is normalised."""
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
+        _discover_token_endpoint("https://idp.example.com/.well-known/openid-configuration")
+        mock_get.assert_called_once_with(
+            "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
+        )
+
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_raises_on_http_status_error(self, mock_get):
+        """Non-2xx HTTP response raises ValueError with actionable message."""
+        import httpx as _httpx
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_get.return_value.raise_for_status.side_effect = _httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=mock_response
+        )
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            _discover_token_endpoint("https://idp.example.com")
+
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_raises_on_request_error(self, mock_get):
+        """Network / timeout error raises ValueError directing operator to explicit config."""
+        import httpx as _httpx
+        mock_get.side_effect = _httpx.RequestError("timeout")
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            _discover_token_endpoint("https://idp.example.com")
+
+    @patch("aas_mcp_server.backend_auth.httpx.get")
+    def test_raises_when_token_endpoint_missing_from_metadata(self, mock_get):
+        """Discovery document without token_endpoint raises ValueError."""
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json.return_value = {"issuer": "https://idp.example.com"}
+        with pytest.raises(ValueError, match="token_endpoint"):
+            _discover_token_endpoint("https://idp.example.com")

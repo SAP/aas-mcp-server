@@ -38,8 +38,12 @@ from typing import AsyncIterator
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import OIDCProxy
+from fastmcp.server.auth.jwt_issuer import derive_jwt_key
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from key_value.aio.protocols.key_value import AsyncKeyValueProtocol
 from key_value.aio.stores.memory import MemoryStore
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+from cryptography.fernet import Fernet
 
 from .config import ComponentConfig
 from .spec_processor import process_component_spec
@@ -62,6 +66,7 @@ from .constants import (
     ENV_OAUTH_AUDIENCE,
     ENV_OAUTH_REQUIRED_SCOPES,
     ENV_OAUTH_SERVER_BASE_URL,
+    ENV_OAUTH_SESSION_STORE_URL,
     ENV_MCP_RATE_LIMIT_PER_MINUTE,
 )
 
@@ -137,6 +142,56 @@ def _parse_positive_float(env_var: str, default: float) -> float:
 
 OIDC_CONFIG_SUFFIX = "/.well-known/openid-configuration"
 
+_SUPPORTED_STORE_SCHEMES = frozenset({"redis", "rediss", "postgresql", "postgres"})
+
+
+def _build_session_store(url: str, encryption_key: bytes) -> AsyncKeyValueProtocol:
+    """Build an encrypted OAuth session store from a URL.
+
+    Supported schemes:
+    - redis:// / rediss://     → RedisStore  (requires aas-mcp-server[redis])
+    - postgresql:// / postgres:// → PostgreSQLStore  (requires aas-mcp-server[postgresql])
+
+    The store is wrapped with FernetEncryptionWrapper using the same key FastMCP
+    would use for its default file store, so tokens are encrypted at rest regardless
+    of backend. Raises ValueError for unrecognised schemes.
+    """
+    from urllib.parse import urlparse
+    scheme = urlparse(url).scheme.lower()
+    if scheme in ("redis", "rediss"):
+        from key_value.aio.stores.redis import RedisStore  # type: ignore[import]
+        # Pass ssl=True explicitly for rediss:// — key_value's URL parser omits it
+        if scheme == "rediss":
+            from redis.asyncio import Redis as _Redis  # type: ignore[import]
+            parsed = urlparse(url)
+            client = _Redis(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 6380,
+                db=int(parsed.path.lstrip("/")) if parsed.path and parsed.path != "/" else 0,
+                username=parsed.username,
+                password=parsed.password,
+                ssl=True,
+                decode_responses=True,
+            )
+            raw_store = RedisStore(client=client)
+        else:
+            raw_store = RedisStore(url=url)
+    elif scheme in ("postgresql", "postgres"):
+        from key_value.aio.stores.postgresql import PostgreSQLStore  # type: ignore[import]
+        raw_store = PostgreSQLStore(url=url)
+    else:
+        raise ValueError(
+            f"OAUTH_SESSION_STORE_URL scheme {scheme!r} is not supported. "
+            f"Use one of: redis://, rediss://, postgresql://. "
+            f"Leave unset to use the default in-memory store."
+        )
+
+    return FernetEncryptionWrapper(
+        key_value=raw_store,
+        fernet=Fernet(key=encryption_key),
+        raise_on_decryption_error=False,
+    )
+
 
 def build_auth_provider(
     host: str,
@@ -206,33 +261,59 @@ def build_auth_provider(
         formatted_host = f"[{host}]" if ":" in host else host
         server_base_url = f"https://{formatted_host}:{port}"
 
+    # Session store: use external store if URL provided, else default to MemoryStore.
+    # Both paths use the same encryption key FastMCP would derive for its default file
+    # store, so tokens are always encrypted at rest regardless of backend.
+    # For multi-replica deployments use OAUTH_SESSION_STORE_URL=redis://... or
+    # postgresql://... (with sticky sessions as fallback).
+    #
+    # We derive the encryption key here — before OIDCProxy — using the same logic
+    # FastMCP would apply internally, so key rotation causes cache-misses (re-auth)
+    # rather than decryption errors.
+    _jwt_key_material = jwt_signing_key or client_secret
+    if _jwt_key_material:
+        _storage_encryption_key = derive_jwt_key(
+            high_entropy_material=_jwt_key_material
+            if isinstance(_jwt_key_material, str)
+            else _jwt_key_material.decode(),
+            salt="fastmcp-storage-encryption-key",
+        )
+    else:
+        # No key material available yet — OIDCProxy will derive it internally.
+        # Fall back to None so OIDCProxy manages the store with its own key.
+        _storage_encryption_key = None
+
+    store_url = os.getenv(ENV_OAUTH_SESSION_STORE_URL)
+    if store_url:
+        if _storage_encryption_key is None:
+            raise ValueError(
+                "OAUTH_SESSION_STORE_URL requires either OAUTH_CLIENT_SECRET or "
+                "OAUTH_JWT_SIGNING_KEY to be set so the store can encrypt tokens at rest."
+            )
+        client_storage: AsyncKeyValueProtocol = _build_session_store(
+            store_url, _storage_encryption_key
+        )
+        _store_label = f"{type(client_storage).__name__}({store_url.split('://')[0]}://...)"
+    else:
+        client_storage = MemoryStore()
+        _store_label = "MemoryStore"
+
     logger.info(
         "OAuth 2.1 OIDCProxy enabled: config_url=%s, client_id=%s, "
-        "audience=%s, scopes=%s, server_base_url=%s",
+        "audience=%s, scopes=%s, server_base_url=%s, session_store=%s",
         config_url,
         client_id,
         audience or "<not set>",
         required_scopes or "<not set>",
         server_base_url,
+        _store_label,
     )
 
-    # Build extra params to send to upstream IdP during authorization.
-    # Request "openid" scope by default so the IdP returns an id_token.
-    # If OAUTH_REQUIRED_SCOPES is set, request those specific scopes (useful for
-    # single-tenant deployments). If not set, omit the scope parameter entirely
-    # so the IdP grants all scopes the user is authorized for (better for
-    # multi-tenant scenarios where scope names include tenant identifiers).
-    # Do NOT enforce scopes on FastMCP-issued tokens (required_scopes=None)
-    # because MCP clients (Claude CLI, OpenCode) register via DCR with no
-    # scopes, so FastMCP tokens will have an empty scope list.
-    extra_authorize_params: dict[str, str] = {}
-    if required_scopes:
-        # User explicitly configured scopes — request openid + those scopes
-        extra_authorize_params["scope"] = " ".join(
-            dict.fromkeys(["openid", *required_scopes])
-        )
-    # If required_scopes is not set, don't send scope parameter at all.
-    # By OAuth spec, the IdP will grant all scopes the user is authorized for.
+    # Always send "openid" so the IdP returns an id_token / OIDC identity claims.
+    # Append any operator-configured scopes after it, deduplicated.
+    extra_authorize_params: dict[str, str] = {
+        "scope": " ".join(dict.fromkeys(["openid", *(required_scopes or [])]))
+    }
 
     return OIDCProxy(
         config_url=config_url,
@@ -246,7 +327,7 @@ def build_auth_provider(
         forward_resource=False,  # Disable RFC 8707 resource param — rejected by SAP IAS
                                  # and unnecessary for non-resource-indicator IdPs.
         require_authorization_consent="external",  # Consent handled by upstream IdP
-        client_storage=MemoryStore(),  # Avoid disk storage — container home dir may not exist
+        client_storage=client_storage,
         extra_authorize_params=extra_authorize_params,
     )
 

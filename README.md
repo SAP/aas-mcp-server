@@ -199,7 +199,8 @@ docker run \
   -e MCP_HOST=0.0.0.0 \
   -e MCP_PORT=8000 \
   -e OAUTH_ISSUER_URL=https://your-idp/realms/your-realm \
-  -e OAUTH_JWKS_URI=https://your-idp/realms/your-realm/protocol/openid-connect/certs \
+  -e OAUTH_CLIENT_ID=your-client-id \
+  -e OAUTH_CLIENT_SECRET=your-client-secret \
   -e OAUTH_SERVER_BASE_URL=http://localhost:8000 \
   -p 8000:8000 \
   aas-mcp-server
@@ -236,38 +237,20 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 
 | Variable | Required | Description |
 |---|---|---|
-| `OAUTH_ISSUER_URL` | Yes (to enable) | OAuth provider issuer URL. Auth is disabled when not set. |
-| `OAUTH_JWKS_URI` | Recommended | JWKS endpoint. Defaults to `{OAUTH_ISSUER_URL}/.well-known/jwks.json` — override for Keycloak and other non-standard providers. |
-| `OAUTH_SERVER_BASE_URL` | Required for Docker | Public URL of the MCP server as seen by clients. Must match the URL the MCP client was registered with. Avoids `0.0.0.0` appearing in resource metadata. |
-| `OAUTH_AUDIENCE` | Recommended | Expected `aud` claim. If unset, audience validation is skipped (warning logged). |
-| `OAUTH_REQUIRED_SCOPES` | Optional | Comma-separated required scopes, e.g. `aas:read,aas:write`. |
+| `OAUTH_ISSUER_URL` | Yes (to enable) | OIDC provider issuer URL. Auth is disabled when not set. |
+| `OAUTH_CLIENT_ID` | Yes | Client ID of the application registered at the upstream IdP. |
+| `OAUTH_CLIENT_SECRET` | Recommended | Client secret from the IdP app registration. |
+| `OAUTH_SERVER_BASE_URL` | Required for Docker | Public URL of the MCP server as seen by clients. Required when `MCP_HOST=0.0.0.0`. |
+| `OAUTH_AUDIENCE` | Recommended | Expected `aud` claim in tokens. |
+| `OAUTH_REQUIRED_SCOPES` | Optional | Comma-separated scopes requested from the IdP during the PKCE flow, e.g. `aas:read,aas:write`. |
+| `OAUTH_SESSION_STORE_URL` | Optional | External store for OAuth session state. Supports `redis://`, `rediss://`, `postgresql://`. Defaults to in-memory (state lost on restart). |
 | `MCP_RATE_LIMIT_PER_MINUTE` | Optional | Max requests per client per minute. Default: 60. |
 
-### Token forwarding
+### How it works
 
-The validated Bearer token is automatically forwarded to the AAS backend on
-every outbound request via a per-request `httpx.Auth` implementation. No
-separate backend credentials are needed — the same OAuth provider can protect
-both the MCP server and the AAS backend.
+The server acts as an OAuth 2.1 Authorization Server via FastMCP's `OIDCProxy`. It exposes a standard PKCE flow that proxies to your upstream IdP. MCP clients (Claude CLI, OpenCode, etc.) register via Dynamic Client Registration and complete a browser-based PKCE flow automatically.
 
-> **FastMCP version note:** Token forwarding uses `get_access_token()` from
-> FastMCP's request context. If you build a custom Docker image that upgrades
-> FastMCP, pin to a tested version in `pyproject.toml`. FastMCP ≥3.3 changed
-> `get_http_headers()` to exclude `authorization` — any implementation relying
-> on that for token forwarding will silently break. The `BearerTokenAuth` class
-> in this server is not affected.
-
-### Provider JWKS paths
-
-Different providers use different JWKS paths. Always set `OAUTH_JWKS_URI`
-explicitly rather than relying on the default:
-
-| Provider | `OAUTH_JWKS_URI` |
-|---|---|
-| Keycloak | `{issuer}/protocol/openid-connect/certs` |
-| Azure AD | `https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys` |
-| Auth0 | `https://{domain}/.well-known/jwks.json` |
-| SAP IAS | `https://{tenant}.accounts.ondemand.com/oauth2/certs` |
+The validated Bearer token is forwarded to the AAS backend on every outbound request. Set `BACKEND_AUTH_AUDIENCE` if the backend requires a different token audience (token exchange via RFC 8693).
 
 ## Supported Components
 
@@ -334,23 +317,18 @@ When the server starts, it processes the OpenAPI specification through a pipelin
 Token validation is failing inside the container. Check the container logs:
 
 ```bash
-docker logs <container-id> 2>&1 | grep -E "Token validation|JWKS|401|ERROR"
+docker logs <container-id> 2>&1 | grep -E "OIDCProxy|401|ERROR"
 ```
 
 **Common causes:**
 
-**1. Wrong JWKS path (most common with Keycloak)**
+**1. Missing OAUTH_CLIENT_ID or OAUTH_CLIENT_SECRET**
 
-The default JWKS path `/.well-known/jwks.json` is not standard — many providers
-use a different path. Always set `OAUTH_JWKS_URI` explicitly:
+The server now uses OIDCProxy, which requires a client registered at your upstream IdP. Both `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` must be set:
 
 ```bash
-# Keycloak
--e OAUTH_JWKS_URI=http://keycloak-host/realms/your-realm/protocol/openid-connect/certs
-
-# Verify the correct path from your provider's discovery document:
-curl -s https://your-idp/.well-known/openid-configuration | python3 -c \
-  "import sys,json; print(json.load(sys.stdin)['jwks_uri'])"
+-e OAUTH_CLIENT_ID=your-client-id \
+-e OAUTH_CLIENT_SECRET=your-client-secret \
 ```
 
 **2. Hostname not resolvable inside the Docker container**
@@ -391,13 +369,13 @@ for c in data[0].get('Containers', {}).values():
 docker run --add-host your-idp-hostname:<proxy-ip> ...
 ```
 
-To verify the hostname resolves AND reaches the JWKS endpoint from inside the container:
+To verify the hostname resolves AND reaches the IdP from inside the container:
 
 ```bash
 docker exec <container-id> python3 -c "
 import urllib.request
-resp = urllib.request.urlopen('http://your-idp-hostname/realms/your-realm/protocol/openid-connect/certs', timeout=5)
-print('JWKS status:', resp.status)
+resp = urllib.request.urlopen('https://your-idp-hostname/.well-known/openid-configuration', timeout=5)
+print('OIDC discovery status:', resp.status)
 "
 ```
 

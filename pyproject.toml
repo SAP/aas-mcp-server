@@ -39,6 +39,10 @@ dependencies = [
     "pyyaml>=6.0.3,<7.0",
 ]
 
+[project.optional-dependencies]
+redis = ["redis>=5.0"]
+postgresql = ["asyncpg>=0.29"]
+
 [project.urls]
 Homepage = "https://github.com/SAP/aas-mcp-server"
 Documentation = "https://github.com/SAP/aas-mcp-server#readme"

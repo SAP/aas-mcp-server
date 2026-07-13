@@ -200,18 +200,51 @@ class TokenExchangeStrategy:
         await self.aclose()
 
 
-def _derive_token_endpoint_from_issuer(issuer_url: str) -> str:
-    """Derive a token endpoint URL from an OIDC issuer URL.
+def _discover_token_endpoint(issuer_url: str) -> str:
+    """Discover the token endpoint from the OIDC provider's metadata document.
 
-    Uses the well-known convention: <issuer>/oauth2/token.
-    This is a best-effort fallback — operators should set
-    BACKEND_AUTH_TOKEN_ENDPOINT explicitly for non-standard IdPs.
+    Fetches <issuer>/.well-known/openid-configuration and returns the
+    ``token_endpoint`` field, which is mandatory per RFC 8414 / OIDC Discovery.
+
+    Raises ValueError with an actionable message if discovery fails or the
+    field is absent — directing the operator to set BACKEND_AUTH_TOKEN_ENDPOINT.
     """
     base = issuer_url.rstrip("/")
-    # Strip /.well-known/openid-configuration if present
     if base.endswith("openid-configuration"):
         base = base[: base.rfind("/.well-known")]
-    return f"{base}/oauth2/token"
+    discovery_url = f"{base}/.well-known/openid-configuration"
+
+    try:
+        response = httpx.get(discovery_url, timeout=5.0)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise ValueError(
+            f"OIDC discovery at {discovery_url} returned HTTP {exc.response.status_code}. "
+            f"Set BACKEND_AUTH_TOKEN_ENDPOINT explicitly to skip discovery."
+        ) from exc
+    except httpx.RequestError as exc:
+        raise ValueError(
+            f"OIDC discovery request to {discovery_url} failed: {exc}. "
+            f"Check that OAUTH_ISSUER_URL is reachable, or set BACKEND_AUTH_TOKEN_ENDPOINT explicitly."
+        ) from exc
+
+    try:
+        metadata = response.json()
+    except Exception as exc:
+        raise ValueError(
+            f"OIDC discovery at {discovery_url} returned a non-JSON response. "
+            f"Set BACKEND_AUTH_TOKEN_ENDPOINT explicitly to skip discovery."
+        ) from exc
+
+    token_endpoint = metadata.get("token_endpoint")
+    if not token_endpoint:
+        raise ValueError(
+            f"OIDC discovery document at {discovery_url} does not contain a 'token_endpoint' field. "
+            f"Set BACKEND_AUTH_TOKEN_ENDPOINT explicitly."
+        )
+
+    logger.debug("OIDC discovery: token_endpoint=%s (from %s)", token_endpoint, discovery_url)
+    return token_endpoint
 
 
 def build_backend_token_provider() -> BackendTokenProvider:
@@ -256,7 +289,7 @@ def build_backend_token_provider() -> BackendTokenProvider:
             "Set it to the OAuth client ID of the AAS backend application."
         )
 
-    # Token endpoint: explicit override > derive from issuer
+    # Token endpoint: explicit override > OIDC discovery from issuer
     token_endpoint = os.getenv(ENV_BACKEND_AUTH_TOKEN_ENDPOINT, "").strip() or None
     if not token_endpoint:
         issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL, "").strip() or None
@@ -264,11 +297,11 @@ def build_backend_token_provider() -> BackendTokenProvider:
             raise ValueError(
                 "BACKEND_AUTH_TOKEN_ENDPOINT is not set and OAUTH_ISSUER_URL is also not set. "
                 "Either set BACKEND_AUTH_TOKEN_ENDPOINT explicitly, or set OAUTH_ISSUER_URL "
-                "so the token endpoint can be derived automatically."
+                "so the token endpoint can be discovered from the OIDC metadata document."
             )
-        token_endpoint = _derive_token_endpoint_from_issuer(issuer_url)
+        token_endpoint = _discover_token_endpoint(issuer_url)
         logger.debug(
-            "BACKEND_AUTH_TOKEN_ENDPOINT not set — derived from OAUTH_ISSUER_URL: %s",
+            "BACKEND_AUTH_TOKEN_ENDPOINT not set — discovered via OIDC metadata: %s",
             token_endpoint,
         )
 
