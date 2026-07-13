@@ -798,11 +798,12 @@ class TestBuildSessionStore:
             from key_value.aio.stores.redis import RedisStore
         except ImportError:
             pytest.skip("redis extra not installed")
-        with patch("aas_mcp_server.server.RedisStore") as mock_redis_cls, \
-             patch("aas_mcp_server.server._Redis") as mock_raw_cls:
-            mock_redis_cls.return_value = MagicMock()
+        with patch("redis.asyncio.Redis") as mock_raw_cls, \
+             patch("key_value.aio.stores.redis.RedisStore") as mock_redis_cls:
             mock_raw_cls.return_value = MagicMock()
+            mock_redis_cls.return_value = MagicMock()
             _build_session_store("rediss://localhost:6380/0", self._FERNET_KEY)
+            mock_raw_cls.assert_called_once()
             _, kwargs = mock_raw_cls.call_args
             assert kwargs.get("ssl") is True
 
