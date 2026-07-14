@@ -423,18 +423,16 @@ class TestDiscoverTokenEndpoint:
 
     @patch("aas_mcp_server.backend_auth.httpx.get")
     def test_non_standard_path_ending_openid_configuration_not_corrupted(self, mock_get):
-        """Issuer URL that ends in openid-configuration WITHOUT /.well-known is NOT corrupted.
+        """Issuer URL ending in /openid-configuration (without /.well-known) is handled correctly.
 
-        Previously rfind('/.well-known') returned -1, slicing the last character and producing
-        an invalid URL like 'https://idp.example.com/auth/openid-configuratio/.well-known/...'.
+        Expected: /openid-configuration is stripped and /.well-known/openid-configuration appended,
+        producing the correct discovery URL without double-appending or truncating.
         """
         mock_get.return_value.raise_for_status = lambda: None
         mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
         _discover_token_endpoint("https://idp.example.com/auth/openid-configuration")
         called_url = mock_get.call_args[0][0]
-        # Must not contain a truncated path segment
-        assert "openid-configuratio/" not in called_url
-        assert called_url.endswith("/.well-known/openid-configuration")
+        assert called_url == "https://idp.example.com/auth/.well-known/openid-configuration"
 
     @patch("aas_mcp_server.backend_auth.httpx.get")
     def test_raises_on_http_status_error(self, mock_get):
