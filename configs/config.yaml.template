@@ -19,12 +19,18 @@ components:
 
   # Asset Administration Shell Repository
   aas-repo:
-    # REQUIRED: Path to your implementation's endpoint documentation
-    # This should be an OpenAPI spec (JSON or YAML) listing all endpoints your implementation supports
+    # At least one of implementation_spec or official_spec must be provided.
+    #
+    # implementation_spec — Path to your backend's endpoint documentation.
+    # Provide this alongside official_spec to derive an intersection (only
+    # endpoints your backend actually implements). Or provide this alone
+    # (without official_spec) to use your backend's spec directly.
     implementation_spec: docs/your-impl-repo-endpoints.json
 
-    # REQUIRED: Path to the official AAS specification
-    # Use the official specs from the openapi/ directory
+    # official_spec — Path to the official AAS specification.
+    # Provide this alongside implementation_spec to restrict the exposed
+    # endpoints to the IDTA-standardised subset. Or provide this alone
+    # (without implementation_spec) to expose the full official spec.
     official_spec: openapi/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
 
     # OPTIONAL: Path prefix filter
@@ -58,6 +64,7 @@ components:
 
   # Submodel Repository
   submodel-repo:
+    # At least one of implementation_spec or official_spec must be provided.
     implementation_spec: docs/your-impl-repo-endpoints.json
     official_spec: openapi/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
     path_prefix: /submodels        # or null if separate spec file
@@ -66,6 +73,7 @@ components:
 
   # Asset Administration Shell Registry
   aas-registry:
+    # At least one of implementation_spec or official_spec must be provided.
     implementation_spec: docs/your-impl-aas-registry-endpoints.json
     official_spec: openapi/AssetAdministrationShellRegistryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
     path_prefix: null              # Registries typically have their own spec files
@@ -74,6 +82,7 @@ components:
 
   # Submodel Registry
   submodel-registry:
+    # At least one of implementation_spec or official_spec must be provided.
     implementation_spec: docs/your-impl-submodel-registry-endpoints.json
     official_spec: openapi/SubmodelRegistryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
     path_prefix: null
@@ -82,11 +91,14 @@ components:
 
 # Configuration Guide:
 #
-# 1. implementation_spec:
-#    - Document what your implementation actually supports
-#    - Can be JSON or YAML format
-#    - Should contain only the endpoints you have implemented
-#    - Used to compute intersection with official spec
+# 1. implementation_spec / official_spec (at least one required per component):
+#    Three valid combinations:
+#      a) Both provided   — server derives the intersection: only endpoints your
+#                           backend actually implements, validated against the standard.
+#      b) official_spec only  — full official AAS spec is used directly.
+#                               Best for backends that implement the full standard.
+#      c) implementation_spec only — your backend's spec is used directly,
+#                                    without cross-referencing the official standard.
 #
 # 2. official_spec:
 #    - Use the official AAS specifications from openapi/ directory

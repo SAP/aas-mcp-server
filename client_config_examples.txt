@@ -30,22 +30,22 @@ OAUTH 2.1 SETUP (HTTP transports only)
 Required environment variables to enable OAuth:
 
   OAUTH_ISSUER_URL          URL of your OAuth/OIDC provider
+  OAUTH_CLIENT_ID           Client ID from your IdP app registration
+  OAUTH_CLIENT_SECRET       Client secret from your IdP app registration
   OAUTH_AUDIENCE            Expected audience claim in tokens (strongly recommended)
   OAUTH_REQUIRED_SCOPES     Comma-separated required scopes (optional)
-  OAUTH_JWKS_URI            Override JWKS endpoint (optional, for non-standard IdPs)
 
 Recommended scopes:
   Read-only server:   OAUTH_REQUIRED_SCOPES=aas:read
   Write-enabled:      OAUTH_REQUIRED_SCOPES=aas:read,aas:write
 
 The validated OAuth Bearer token is automatically forwarded to the AAS backend
-on every request — no separate backend credentials are needed.
+on every request.
 
 Provider examples:
   Keycloak:  OAUTH_ISSUER_URL=https://keycloak.example.com/realms/my-realm
   Azure AD:  OAUTH_ISSUER_URL=https://login.microsoftonline.com/{tenant-id}/v2.0
   SAP IAS:   OAUTH_ISSUER_URL=https://my-tenant.accounts.ondemand.com
-             (also set OAUTH_JWKS_URI for non-standard JWKS path)
 
 ================================================================================
 1. CLAUDE DESKTOP
@@ -84,8 +84,11 @@ Remote HTTP server with OAuth (Claude Desktop uses MCP client OAuth flow):
 
   The server must be started with:
     OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm
+    OAUTH_CLIENT_ID=your-client-id
+    OAUTH_CLIENT_SECRET=your-client-secret
     OAUTH_AUDIENCE=aas-mcp-server
     OAUTH_REQUIRED_SCOPES=aas:read
+    OAUTH_SERVER_BASE_URL=https://your-mcp-server.example.com
     aas-mcp-server --component aas-repo --base-url https://your-backend:8080 \
                    --transport streamable-http --host 0.0.0.0 --port 8000 \
                    --config /path/to/config.yaml

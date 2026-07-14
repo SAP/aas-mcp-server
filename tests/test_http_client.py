@@ -12,7 +12,9 @@ header is injected when a token is present, and absent when there is none.
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 import httpx
 
@@ -73,57 +75,102 @@ class TestBuildAsyncClient:
         client = build_async_client(TEST_BASE_URL)
         assert client.timeout.read == float(DEFAULT_HTTP_TIMEOUT)
 
+    def test_build_async_client_accepts_provider(self):
+        """build_async_client uses the supplied provider in BearerTokenAuth."""
+        from aas_mcp_server.backend_auth import NoneStrategy
+        provider = NoneStrategy()
+        client = build_async_client(TEST_BASE_URL, backend_token_provider=provider)
+        assert isinstance(client.auth, BearerTokenAuth)
+        assert client.auth._provider is provider
+
 
 class TestBearerTokenAuth:
-    """Tests for BearerTokenAuth.auth_flow."""
+    """Tests for BearerTokenAuth.async_auth_flow."""
 
-    def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx.Request:
-        """Run auth_flow on a dummy request and return the modified request."""
+    async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx.Request:
+        """Run async_auth_flow on a dummy request and return the modified request."""
         request = httpx.Request("GET", TEST_BASE_URL)
-        flow = auth.auth_flow(request)
-        next(flow)  # advance generator to the yield
+        flow = auth.async_auth_flow(request)
+        await flow.__anext__()  # advance to yield
         try:
-            flow.send(MagicMock(spec=httpx.Response))  # send mock response
-        except StopIteration:
+            await flow.athrow(StopAsyncIteration)
+        except StopAsyncIteration:
+            pass
+        except Exception:
             pass
         return request
 
-    @patch("aas_mcp_server.http_client.get_access_token")
-    def test_injects_bearer_token_when_token_present(self, mock_get_token):
-        """Authorization: Bearer <token> is added when get_access_token() returns a token."""
-        mock_token = MagicMock()
-        mock_token.token = TEST_TOKEN
-        mock_get_token.return_value = mock_token
+    @pytest.mark.asyncio
+    async def test_injects_bearer_token_when_provider_returns_token(self):
+        """Authorization: Bearer <token> is added when provider returns a token."""
+        mock_provider = MagicMock()
+        mock_provider.get_token = AsyncMock(return_value=TEST_TOKEN)
 
-        request = self._run_auth_flow(BearerTokenAuth())
+        request = await self._run_auth_flow(BearerTokenAuth(provider=mock_provider))
 
         assert HEADER_AUTHORIZATION in request.headers
-        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(
-            token=TEST_TOKEN
-        )
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=TEST_TOKEN)
 
-    @patch("aas_mcp_server.http_client.get_access_token")
-    def test_no_authorization_header_when_no_token(self, mock_get_token):
-        """No Authorization header when get_access_token() returns None (stdio / no auth)."""
-        mock_get_token.return_value = None
+    @pytest.mark.asyncio
+    async def test_no_authorization_header_when_provider_returns_none(self):
+        """No Authorization header when provider returns None."""
+        mock_provider = MagicMock()
+        mock_provider.get_token = AsyncMock(return_value=None)
 
-        request = self._run_auth_flow(BearerTokenAuth())
+        request = await self._run_auth_flow(BearerTokenAuth(provider=mock_provider))
 
         assert HEADER_AUTHORIZATION not in request.headers
 
-    @patch("aas_mcp_server.http_client.get_access_token")
-    def test_token_value_used_verbatim(self, mock_get_token):
-        """The exact token string from AccessToken.token is used in the header."""
-        mock_token = MagicMock()
-        mock_token.token = "eyJhbGciOiJSUzI1NiJ9.payload.signature"
-        mock_get_token.return_value = mock_token
+    @pytest.mark.asyncio
+    async def test_token_value_used_verbatim(self):
+        """The exact token string from the provider is used in the header."""
+        token = "eyJhbGciOiJSUzI1NiJ9.payload.signature"
+        mock_provider = MagicMock()
+        mock_provider.get_token = AsyncMock(return_value=token)
 
-        request = self._run_auth_flow(BearerTokenAuth())
+        request = await self._run_auth_flow(BearerTokenAuth(provider=mock_provider))
 
-        assert (
-            "eyJhbGciOiJSUzI1NiJ9.payload.signature"
-            in request.headers[HEADER_AUTHORIZATION]
-        )
+        assert token in request.headers[HEADER_AUTHORIZATION]
+
+    def test_uses_forward_strategy_by_default(self):
+        """BearerTokenAuth defaults to ForwardStrategy when no provider supplied."""
+        from aas_mcp_server.backend_auth import ForwardStrategy
+        auth = BearerTokenAuth()
+        assert isinstance(auth._provider, ForwardStrategy)
+
+    @pytest.mark.asyncio
+    async def test_no_token_content_in_debug_logs(self):
+        """Token string must not appear in debug logs — even partial disclosure is a security risk."""
+        import logging
+
+        # Use a token where even the first 4 chars are unique enough to assert on
+        token = "TOPSECRET-token-xyz"
+        mock_provider = MagicMock()
+        mock_provider.get_token = AsyncMock(return_value=token)
+
+        # Install a handler directly on the module logger to capture records
+        import aas_mcp_server.http_client as _mod
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(self.format(record))
+
+        handler = _Capture(level=logging.DEBUG)
+        _mod.logger.addHandler(handler)
+        old_level = _mod.logger.level
+        _mod.logger.setLevel(logging.DEBUG)
+        try:
+            await self._run_auth_flow(BearerTokenAuth(provider=mock_provider))
+        finally:
+            _mod.logger.removeHandler(handler)
+            _mod.logger.setLevel(old_level)
+
+        all_output = " ".join(captured)
+        # The token itself must not appear
+        assert token not in all_output, f"Full token found in log output: {all_output!r}"
+        # Nor any prefix of it (current code logs token[:6] = "TOPSEC")
+        assert "TOPSEC" not in all_output, f"Token prefix found in log output: {all_output!r}"
 
 
 class TestConstants:

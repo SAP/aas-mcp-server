@@ -13,14 +13,15 @@ components:
   # AAS Repository Configuration
   # ===========================================================================
   aas-repo:
-    # Official AAS OpenAPI spec (REQUIRED if no implementation_spec)
+    # Official AAS OpenAPI spec
+    # At least one of official_spec or implementation_spec must be provided.
     # Download from: https://github.com/admin-shell-io/aas-specs
     official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
 
-    # Implementation-specific spec (OPTIONAL)
-    # If both official + implementation specs are provided, the server will:
-    #   1. Derive intersection (only endpoints your backend supports)
-    #   2. Apply overlay if provided
+    # Implementation-specific spec
+    # Provide this alongside official_spec to derive an intersection (only endpoints
+    # your backend actually implements). Or provide this alone (without official_spec)
+    # to use your backend's spec directly without intersection.
     # implementation_spec: specs/my-backend-aas-repo-endpoints.yaml
 
     # Overlay for customizing operation names and descriptions (OPTIONAL)
@@ -99,49 +100,177 @@ components:
 # Usage
 # =============================================================================
 #
-# Runtime (MCP Server — stdio, for local use):
+# Runtime (MCP Server — stdio, for local use without auth):
 #   aas-mcp-server --component aas-repo --base-url http://localhost:8080 --config config.yaml
 #
-# Runtime (MCP Server — HTTP transport with OAuth):
-#   OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm \
-#   OAUTH_AUDIENCE=aas-mcp-server \
-#   OAUTH_REQUIRED_SCOPES=aas:read \
+# Runtime (MCP Server — HTTP transport with OAuth via OIDCProxy):
+#   OAUTH_ISSUER_URL=https://your-idp.example.com/.well-known/openid-configuration \
+#   OAUTH_CLIENT_ID=your-client-id \
+#   OAUTH_CLIENT_SECRET=your-client-secret \
+#   OAUTH_AUDIENCE=your-client-id \
+#   OAUTH_SERVER_BASE_URL=http://localhost:8000 \
 #   aas-mcp-server --component aas-repo --base-url https://your-backend:8080 \
 #                  --transport streamable-http --host 0.0.0.0 --port 8000 \
 #                  --config config.yaml
+#
+# =============================================================================
+# MIGRATION NOTICE — Breaking change from RemoteAuthProvider to OIDCProxy
+# =============================================================================
+#
+# If you were using the previous RemoteAuthProvider-based OAuth configuration,
+# the following changes are required:
+#
+#   REMOVED:  OAUTH_JWKS_URI (auto-discovered from OIDC config — remove this var)
+#   ADDED:    OAUTH_CLIENT_ID (required — client ID from your IdP app registration)
+#   ADDED:    OAUTH_CLIENT_SECRET (required for confidential clients)
+#   CHANGED:  OAUTH_ISSUER_URL now accepts either the issuer base URL or the full
+#             OIDC configuration URL. Both forms work — the suffix
+#             /.well-known/openid-configuration is auto-appended if absent.
+#
+# Why this change? The previous RemoteAuthProvider implementation required
+# IdPs to support Dynamic Client Registration (RFC 7591). Most enterprise IdPs
+# (SAP IAS, Azure AD, Google, etc.) do not support DCR. OIDCProxy acts as an
+# OAuth Authorization Server itself, proxying the PKCE flow to the upstream IdP
+# using pre-registered server-side credentials. This works with any OIDC IdP.
+#
+# SCOPE ENFORCEMENT CHANGE (important if you used OAUTH_REQUIRED_SCOPES):
+#
+#   Previous behaviour (JWTVerifier-based):
+#     OAUTH_REQUIRED_SCOPES was enforced on EVERY inbound request — the server
+#     rejected tokens that did not carry the required scopes.
+#
+#   Current behaviour (OIDCProxy-based):
+#     OAUTH_REQUIRED_SCOPES is enforced PER-AUTHORIZATION-FLOW ONLY, not
+#     per-request. The scopes are requested from the upstream IdP during the
+#     PKCE flow; the IdP refuses authorization to users who do not hold them.
+#     FastMCP-issued tokens are NOT re-checked for scopes on every request
+#     because MCP clients register via DCR without declaring scopes, meaning
+#     FastMCP tokens carry an empty scope list by design.
+#
+#     The server emits a WARNING at startup when OAUTH_REQUIRED_SCOPES is set
+#     to make this behaviour visible in logs.
+#
+#     If you require per-request scope enforcement at the MCP boundary, consider
+#     implementing a custom TokenVerifier and passing it via the token_verifier
+#     parameter, or enforce scopes at the backend API layer instead.
 #
 # =============================================================================
 # Environment Variables — OAuth 2.1 Authorization (HTTP transports only)
 # =============================================================================
 #
 # OAUTH_ISSUER_URL        (Required to enable OAuth)
-#   URL of the OAuth 2.1 authorization server (identity provider).
-#   The server derives the JWKS URI as {OAUTH_ISSUER_URL}/.well-known/jwks.json
-#   unless OAUTH_JWKS_URI is set explicitly.
+#   OIDC issuer URL or full OIDC configuration document URL.
+#   The /.well-known/openid-configuration suffix is appended automatically
+#   if not already present in the value.
 #   Examples:
+#     SAP IAS:    https://my-tenant.accounts.ondemand.com
 #     Keycloak:   https://keycloak.example.com/realms/my-realm
 #     Azure AD:   https://login.microsoftonline.com/{tenant-id}/v2.0
-#     SAP IAS:    https://my-tenant.accounts.ondemand.com
+#     Okta:       https://my-org.okta.com
 #
-# OAUTH_AUDIENCE          (Strongly recommended — prevents token passthrough abuse)
-#   Expected audience claim in Bearer tokens. Must match what the AAS backend
-#   also expects, since the validated token is forwarded to the backend.
-#   Examples: aas-mcp-server, api://my-app-id, https://api.example.com
+# OAUTH_CLIENT_ID         (Required when OAUTH_ISSUER_URL is set)
+#   Client ID of the application registered at the upstream IdP.
+#   This is the MCP server's own client credentials — not the end user's client.
+#   The MCP server uses these credentials to proxy the PKCE flow.
+#   Example: cf4b45a9-02ba-4f17-ab95-f677b0196afa
+#
+# OAUTH_CLIENT_SECRET     (Required for confidential clients)
+#   Client secret from the IdP app registration.
+#   Omit only for PKCE public clients — must then set OAUTH_JWT_SIGNING_KEY.
+#
+# OAUTH_AUDIENCE          (Recommended)
+#   Audience value to forward to the upstream IdP and validate in tokens.
+#   For SAP IAS: same as OAUTH_CLIENT_ID (the application UUID).
+#   For Azure AD: your API identifier (e.g. api://your-app-id).
+#   When not set, audience validation is disabled (not recommended for production).
 #
 # OAUTH_REQUIRED_SCOPES   (Optional)
-#   Comma-separated list of OAuth scopes required on every token.
-#   Recommended scope pairs:
-#     Read-only server:   OAUTH_REQUIRED_SCOPES=aas:read
-#     Write-enabled:      OAUTH_REQUIRED_SCOPES=aas:read,aas:write
-#   Omit to accept any valid token from the configured issuer.
+#   Comma-separated list of OAuth scopes requested from the upstream IdP during
+#   the PKCE authorization flow. The IdP will only authorize users who hold these
+#   scopes. Scope enforcement happens at the IdP — not per-request on FastMCP tokens.
+#   Example: openid,email,profile
 #
-# OAUTH_JWKS_URI           (Optional — override for non-standard providers)
-#   Explicit JWKS endpoint URL. Set when your IdP uses a non-standard path
-#   (e.g., some SAP IAS configurations).
-#   Default: {OAUTH_ISSUER_URL}/.well-known/jwks.json
+# OAUTH_SERVER_BASE_URL   (Required when MCP_HOST is 0.0.0.0 or ::)
+#   Public-facing base URL of this server. Used for:
+#   - The /auth/callback redirect URI registered with the upstream IdP
+#   - OAuth metadata advertised to MCP clients
+#   Must match a redirect URI registered in your IdP application.
+#   Example: http://localhost:8000  (development)
+#            https://mcp.your-domain.com  (production)
+#
+# OAUTH_JWT_SIGNING_KEY   (Recommended for production)
+#   Secret used to sign FastMCP-issued JWT tokens. When not set, FastMCP
+#   auto-manages keys (ephemeral on Linux — tokens invalidated on restart).
+#   For production, set to a stable secret loaded from a secrets manager.
+#
+# OAUTH_SESSION_STORE_URL  (Optional)
+#   Connection URL for an external OAuth session store. The session store holds
+#   OAuth client registrations, PKCE state, and short-lived token metadata.
+#
+#   Default (no env var): in-memory store — fast, zero-dependency, but state is
+#   lost on process restart (clients re-authenticate once) and incompatible with
+#   multi-replica deployments (PKCE /authorize and /callback must hit the same
+#   process). This is fine for single-instance Kyma / Docker deployments.
+#
+#   For multi-replica deployments: either configure sticky sessions at the load
+#   balancer (e.g. Kubernetes sessionAffinity: ClientIP) so all requests from
+#   one OAuth flow land on the same pod, OR use an external shared store:
+#
+#   Redis:
+#     OAUTH_SESSION_STORE_URL=redis://redis-host:6379/0
+#     OAUTH_SESSION_STORE_URL=rediss://redis-host:6380/0  (TLS)
+#     Requires: pip install aas-mcp-server[redis]
+#
+#   PostgreSQL:
+#     OAUTH_SESSION_STORE_URL=postgresql://user:pass@pg-host:5432/dbname
+#     Requires: pip install aas-mcp-server[postgresql]
 #
 # MCP_RATE_LIMIT_PER_MINUTE  (Optional, default: 60)
 #   Maximum MCP tool invocations per authenticated client per minute.
+#
+# =============================================================================
+# Environment Variables — Backend Token Strategy
+# =============================================================================
+#
+# Controls how the MCP server authenticates to the AAS backend API.
+#
+# BACKEND_AUTH_STRATEGY (Optional, default: forward)
+#   Which strategy to use for backend calls:
+#     forward        - Forward the upstream user token as-is. Default when
+#                      BACKEND_AUTH_AUDIENCE is not set. Works when the
+#                      backend accepts the same token the user authenticated
+#                      with (same IdP, same audience).
+#     token_exchange - RFC 8693 token exchange. Trades the user's upstream
+#                      token for a backend-scoped token. Preserves user
+#                      identity (sub claim). Auto-selected when
+#                      BACKEND_AUTH_AUDIENCE is set.
+#     none           - No Authorization header. For public backends or
+#                      backends using other auth (e.g. mTLS).
+#
+# BACKEND_AUTH_AUDIENCE (Optional)
+#   OAuth client ID of the AAS backend application. When set, auto-selects
+#   token_exchange strategy. The issued token will have aud == this value.
+#   Example: -e BACKEND_AUTH_AUDIENCE=my-aas-backend-client-id
+#
+# BACKEND_AUTH_TOKEN_ENDPOINT (Optional)
+#   Full URL of the token endpoint for token exchange.
+#   When not set, the endpoint is discovered automatically from the OIDC
+#   metadata document at <OAUTH_ISSUER_URL>/.well-known/openid-configuration.
+#   Set explicitly when the discovery document is unreachable or when the
+#   backend uses a different IdP than OAUTH_ISSUER_URL.
+#   Example: -e BACKEND_AUTH_TOKEN_ENDPOINT=https://idp.example.com/realms/myrealm/protocol/openid-connect/token
+#
+# BACKEND_AUTH_SCOPE (Optional)
+#   Space-separated scopes to request in the token exchange.
+#   Example: -e BACKEND_AUTH_SCOPE="aas.read aas.write"
+#
+# BACKEND_AUTH_CLIENT_ID (Optional, default: OAUTH_CLIENT_ID)
+#   Client ID for authenticating the token exchange request.
+#   Set only if the MCP server uses a different client for backend token
+#   exchange than for user authentication.
+#
+# BACKEND_AUTH_CLIENT_SECRET (Optional, default: OAUTH_CLIENT_SECRET)
+#   Client secret for BACKEND_AUTH_CLIENT_ID.
 #
 # =============================================================================
 # Environment Variables — Server / Transport
@@ -156,14 +285,38 @@ components:
 # LOG_LEVEL                Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
 # CONFIG_PATH              Path to this config file
 #
-# Docker:
+# =============================================================================
+# Docker example (SAP IAS, token_exchange for backend):
+# =============================================================================
+#
 #   docker run \
 #     -v $(pwd)/config.yaml:/app/config/config.yaml \
 #     -v $(pwd)/specs:/app/specs \
-#     -e AAS_COMPONENT=aas-repo \
 #     -e AAS_BASE_URL=https://your-backend:8080 \
-#     -e OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm \
-#     -e OAUTH_AUDIENCE=aas-mcp-server \
-#     -e OAUTH_REQUIRED_SCOPES=aas:read \
+#     -e MCP_TRANSPORT=streamable-http \
+#     -e MCP_HOST=0.0.0.0 \
+#     -e MCP_PORT=8000 \
+#     -e OAUTH_ISSUER_URL=https://my-tenant.accounts.ondemand.com \
+#     -e OAUTH_CLIENT_ID=cf4b45a9-02ba-4f17-ab95-f677b0196afa \
+#     -e OAUTH_CLIENT_SECRET=your-client-secret \
+#     -e OAUTH_AUDIENCE=cf4b45a9-02ba-4f17-ab95-f677b0196afa \
+#     -e OAUTH_SERVER_BASE_URL=http://localhost:8000 \
+#     -e OAUTH_JWT_SIGNING_KEY=your-stable-signing-secret \
+#     -e BACKEND_AUTH_AUDIENCE=your-aas-backend-client-id \
 #     -p 8000:8000 \
 #     aas-mcp-server
+#
+# BACKEND_AUTH_TOKEN_ENDPOINT is discovered automatically from OIDC metadata when not set.
+# Set it explicitly when the backend uses a different IdP.
+#
+# =============================================================================
+# IdP application registration checklist
+# =============================================================================
+#
+# Register the following redirect URI in your IdP application:
+#   {OAUTH_SERVER_BASE_URL}/auth/callback
+#   Example: http://localhost:8000/auth/callback
+#
+# The MCP client's loopback redirect URIs (e.g. http://127.0.0.1:9876/callback)
+# are handled by the MCP server's /register endpoint — they do NOT need to be
+# registered in the upstream IdP.
