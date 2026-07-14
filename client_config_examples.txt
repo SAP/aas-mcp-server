@@ -84,8 +84,11 @@ Remote HTTP server with OAuth (Claude Desktop uses MCP client OAuth flow):
 
   The server must be started with:
     OAUTH_ISSUER_URL=https://your-idp.example.com/realms/myrealm
+    OAUTH_CLIENT_ID=your-client-id
+    OAUTH_CLIENT_SECRET=your-client-secret
     OAUTH_AUDIENCE=aas-mcp-server
     OAUTH_REQUIRED_SCOPES=aas:read
+    OAUTH_SERVER_BASE_URL=https://your-mcp-server.example.com
     aas-mcp-server --component aas-repo --base-url https://your-backend:8080 \
                    --transport streamable-http --host 0.0.0.0 --port 8000 \
                    --config /path/to/config.yaml

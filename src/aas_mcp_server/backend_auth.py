@@ -214,9 +214,7 @@ def _discover_token_endpoint(issuer_url: str) -> str:
     if base.endswith(_well_known):
         base = base[: -len(_well_known)]
     elif base.endswith("/openid-configuration"):
-        # Handle non-standard paths that end in openid-configuration without /.well-known
-        # Leave base as-is — the discovery URL will be constructed correctly below
-        pass
+        base = base[: -len("/openid-configuration")]
     discovery_url = f"{base}/.well-known/openid-configuration"
 
     try:

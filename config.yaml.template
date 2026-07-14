@@ -254,9 +254,11 @@ components:
 #
 # BACKEND_AUTH_TOKEN_ENDPOINT (Optional)
 #   Full URL of the token endpoint for token exchange.
-#   Defaults to <OAUTH_ISSUER_URL>/oauth2/token when not set.
-#   Set explicitly for cross-IdP scenarios (user IdP != backend IdP).
-#   Example: -e BACKEND_AUTH_TOKEN_ENDPOINT=https://idp.example.com/oauth2/token
+#   When not set, the endpoint is discovered automatically from the OIDC
+#   metadata document at <OAUTH_ISSUER_URL>/.well-known/openid-configuration.
+#   Set explicitly when the discovery document is unreachable or when the
+#   backend uses a different IdP than OAUTH_ISSUER_URL.
+#   Example: -e BACKEND_AUTH_TOKEN_ENDPOINT=https://idp.example.com/realms/myrealm/protocol/openid-connect/token
 #
 # BACKEND_AUTH_SCOPE (Optional)
 #   Space-separated scopes to request in the token exchange.
@@ -304,7 +306,7 @@ components:
 #     -p 8000:8000 \
 #     aas-mcp-server
 #
-# BACKEND_AUTH_TOKEN_ENDPOINT defaults to <OAUTH_ISSUER_URL>/oauth2/token.
+# BACKEND_AUTH_TOKEN_ENDPOINT is discovered automatically from OIDC metadata when not set.
 # Set it explicitly when the backend uses a different IdP.
 #
 # =============================================================================
