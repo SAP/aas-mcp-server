@@ -93,15 +93,18 @@ ENV_BACKEND_AUTH_CLIENT_SECRET = "BACKEND_AUTH_CLIENT_SECRET"
 # Strategy names
 BACKEND_STRATEGY_FORWARD = "forward"
 BACKEND_STRATEGY_TOKEN_EXCHANGE = "token_exchange"
+BACKEND_STRATEGY_CLIENT_CREDENTIALS = "client_credentials"
 BACKEND_STRATEGY_NONE = "none"
 VALID_BACKEND_STRATEGIES = frozenset({
     BACKEND_STRATEGY_FORWARD,
     BACKEND_STRATEGY_TOKEN_EXCHANGE,
+    BACKEND_STRATEGY_CLIENT_CREDENTIALS,
     BACKEND_STRATEGY_NONE,
 })
 
-# RFC 8693 grant type
+# OAuth grant types
 OAUTH_GRANT_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+OAUTH_GRANT_CLIENT_CREDENTIALS = "client_credentials"
 OAUTH_TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
 
 # ============================================================================

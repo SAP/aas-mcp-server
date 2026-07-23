@@ -5,7 +5,7 @@
 Pluggable backend token strategies for AAS MCP Server.
 
 When the MCP server calls the AAS backend API, it must present a token that
-the backend accepts. Three strategies are available:
+the backend accepts. Four strategies are available:
 
 - ForwardStrategy (default): forwards the upstream IdP token from FastMCP's
   request context. Works when the backend accepts the same token the MCP
@@ -16,23 +16,32 @@ the backend accepts. Three strategies are available:
   expects a token with a specific audience (its own client ID) and the IdP
   supports token exchange. User identity (sub) is preserved.
 
+- ClientCredentialsStrategy: performs an OAuth 2.0 client credentials grant
+  (RFC 6749 §4.4) — the MCP server authenticates as itself and obtains a
+  backend token independent of any user session. Suitable for system-to-system
+  deployments (e.g. stdio transport, batch jobs) or backends that trust the
+  MCP server's own service identity. Caches the token until near expiry.
+
 - NoneStrategy: adds no Authorization header. For public backends or backends
   that use other auth mechanisms (e.g. mTLS).
 
 The strategy is selected by build_backend_token_provider() based on env vars:
 - No BACKEND_AUTH_* vars set → ForwardStrategy
 - BACKEND_AUTH_AUDIENCE set → TokenExchangeStrategy (auto-detected)
-- BACKEND_AUTH_STRATEGY=<name> → explicit override
+- BACKEND_AUTH_STRATEGY=<name> → explicit override (required for client_credentials)
 """
 
+import asyncio
 import logging
 import os
+import time
 from typing import Protocol, runtime_checkable
 
 import httpx
 from fastmcp.server.dependencies import get_access_token
 
 from .constants import (
+    BACKEND_STRATEGY_CLIENT_CREDENTIALS,
     BACKEND_STRATEGY_FORWARD,
     BACKEND_STRATEGY_NONE,
     BACKEND_STRATEGY_TOKEN_EXCHANGE,
@@ -45,12 +54,22 @@ from .constants import (
     ENV_OAUTH_CLIENT_ID,
     ENV_OAUTH_CLIENT_SECRET,
     ENV_OAUTH_ISSUER_URL,
+    OAUTH_GRANT_CLIENT_CREDENTIALS,
     OAUTH_GRANT_TOKEN_EXCHANGE,
     OAUTH_TOKEN_TYPE_ACCESS_TOKEN,
     VALID_BACKEND_STRATEGIES,
 )
 
 logger = logging.getLogger(__name__)
+
+# Refresh cached client_credentials tokens this many seconds before their
+# stated expiry, to avoid a request being sent with a token that expires
+# in-flight.
+EXPIRY_BUFFER_SECONDS = 30
+
+# Fallback lifetime when a client_credentials token response omits `expires_in`.
+# Conservative: refresh often rather than reuse a token whose true expiry is unknown.
+DEFAULT_TOKEN_LIFETIME_SECONDS = 300
 
 
 @runtime_checkable
@@ -200,6 +219,143 @@ class TokenExchangeStrategy:
         await self.aclose()
 
 
+class ClientCredentialsStrategy:
+    """
+    OAuth 2.0 Client Credentials Grant (RFC 6749 §4.4).
+
+    The MCP server authenticates as itself at the IdP's token endpoint and
+    receives a backend-scoped access token that carries no user identity.
+    Suitable for system-to-system flows where user context is absent or
+    irrelevant, e.g. stdio transport, batch jobs, or backends that trust
+    the MCP server's own service identity.
+
+    The issued token is cached in-memory and reused across calls until it
+    is about to expire (``EXPIRY_BUFFER_SECONDS`` before the stated
+    ``expires_in``), so the IdP is not hit on every backend request. An
+    ``asyncio.Lock`` prevents concurrent callers from issuing duplicate
+    fetches during a refresh.
+
+    A single ``httpx.AsyncClient`` is created at construction time and reused.
+
+    Args:
+        token_endpoint: Full URL of the IdP's token endpoint.
+        client_id: Client ID authenticating this MCP server to the IdP.
+        client_secret: Client secret for the same.
+        scope: Optional space-separated scopes to request.
+        audience: Optional audience (some IdPs — Auth0, SAP IAS — require it;
+            spec-compliant IdPs treat it as unnecessary).
+    """
+
+    def __init__(
+        self,
+        token_endpoint: str,
+        client_id: str,
+        client_secret: str,
+        scope: str | None,
+        audience: str | None,
+    ) -> None:
+        self.token_endpoint = token_endpoint
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.scope = scope
+        self.audience = audience
+        self._http_client = httpx.AsyncClient()
+        self._cached_token: str | None = None
+        # Monotonic clock timestamp (seconds) past which the cached token
+        # must be refreshed. 0.0 means "never fetched" — first call will fetch.
+        self._expires_at: float = 0.0
+        self._lock = asyncio.Lock()
+
+    async def get_token(self) -> str | None:
+        async with self._lock:
+            now = time.monotonic()
+            if self._cached_token is not None and now < self._expires_at - EXPIRY_BUFFER_SECONDS:
+                logger.debug(
+                    "ClientCredentialsStrategy: reusing cached token (%.0fs until refresh)",
+                    self._expires_at - EXPIRY_BUFFER_SECONDS - now,
+                )
+                return self._cached_token
+
+            data: dict[str, str] = {"grant_type": OAUTH_GRANT_CLIENT_CREDENTIALS}
+            if self.scope:
+                data["scope"] = self.scope
+            if self.audience:
+                data["audience"] = self.audience
+
+            logger.debug(
+                "ClientCredentialsStrategy: fetching new token at %s scope=%s audience=%s",
+                self.token_endpoint,
+                self.scope or "<not set>",
+                self.audience or "<not set>",
+            )
+
+            try:
+                response = await self._http_client.post(
+                    self.token_endpoint,
+                    data=data,
+                    auth=(self.client_id, self.client_secret),
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError(
+                    f"Backend client_credentials token request failed at {self.token_endpoint}: "
+                    f"HTTP {exc.response.status_code}. "
+                    f"Check BACKEND_AUTH_CLIENT_ID, BACKEND_AUTH_CLIENT_SECRET, and that the IdP "
+                    f"is configured to allow the client_credentials grant for this client."
+                ) from exc
+            except httpx.RequestError as exc:
+                raise RuntimeError(
+                    f"Backend client_credentials token request failed: {exc}. "
+                    f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self.token_endpoint}) is reachable."
+                ) from exc
+
+            try:
+                payload = response.json()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Backend client_credentials token request at {self.token_endpoint} returned "
+                    f"a non-JSON response (content-type: "
+                    f"{response.headers.get('content-type', '<unknown>')}). "
+                    f"Expected an OAuth 2.0 token response with 'access_token'."
+                ) from exc
+
+            if "access_token" not in payload:
+                raise RuntimeError(
+                    f"Backend client_credentials token request at {self.token_endpoint} succeeded "
+                    f"(HTTP 200) but the response is missing the 'access_token' field. "
+                    f"Check that the IdP is returning a valid OAuth 2.0 token response."
+                )
+
+            access_token: str = payload["access_token"]
+            expires_in_raw = payload.get("expires_in")
+            try:
+                expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
+            except (TypeError, ValueError):
+                expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+            if expires_in <= 0:
+                expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+
+            self._cached_token = access_token
+            self._expires_at = time.monotonic() + expires_in
+
+            logger.debug(
+                "ClientCredentialsStrategy: token acquired, length=%d expires_in=%ds",
+                len(access_token),
+                expires_in,
+            )
+            return access_token
+
+    async def aclose(self) -> None:
+        """Close the shared httpx.AsyncClient and release the connection pool."""
+        await self._http_client.aclose()
+
+    async def __aenter__(self) -> "ClientCredentialsStrategy":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
+
+
 def _discover_token_endpoint(issuer_url: str) -> str:
     """Discover the token endpoint from the OIDC provider's metadata document.
 
@@ -284,6 +440,76 @@ def build_backend_token_provider() -> BackendTokenProvider:
     if strategy_name == BACKEND_STRATEGY_FORWARD:
         logger.info("Backend auth strategy: forward (upstream token forwarded as-is)")
         return ForwardStrategy()
+
+    if strategy_name == BACKEND_STRATEGY_CLIENT_CREDENTIALS:
+        # Token endpoint: explicit override > OIDC discovery from issuer
+        cc_token_endpoint = os.getenv(ENV_BACKEND_AUTH_TOKEN_ENDPOINT, "").strip() or None
+        if not cc_token_endpoint:
+            cc_issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL, "").strip() or None
+            if not cc_issuer_url:
+                raise ValueError(
+                    "BACKEND_AUTH_TOKEN_ENDPOINT is not set and OAUTH_ISSUER_URL is also not set. "
+                    "Either set BACKEND_AUTH_TOKEN_ENDPOINT explicitly, or set OAUTH_ISSUER_URL "
+                    "so the token endpoint can be discovered from the OIDC metadata document."
+                )
+            cc_token_endpoint = _discover_token_endpoint(cc_issuer_url)
+            logger.debug(
+                "BACKEND_AUTH_TOKEN_ENDPOINT not set — discovered via OIDC metadata: %s",
+                cc_token_endpoint,
+            )
+
+        cc_client_id = (
+            os.getenv(ENV_BACKEND_AUTH_CLIENT_ID, "").strip()
+            or os.getenv(ENV_OAUTH_CLIENT_ID, "").strip()
+            or None
+        )
+        cc_client_secret = (
+            os.getenv(ENV_BACKEND_AUTH_CLIENT_SECRET, "").strip()
+            or os.getenv(ENV_OAUTH_CLIENT_SECRET, "").strip()
+            or None
+        )
+
+        if not cc_client_id:
+            raise ValueError(
+                "Client credentials strategy requires a client ID. "
+                "Set BACKEND_AUTH_CLIENT_ID (or OAUTH_CLIENT_ID as fallback)."
+            )
+        if not cc_client_secret:
+            raise ValueError(
+                "Client credentials strategy requires a client secret. "
+                "Set BACKEND_AUTH_CLIENT_SECRET (or OAUTH_CLIENT_SECRET as fallback)."
+            )
+
+        cc_scope = os.getenv(ENV_BACKEND_AUTH_SCOPE, "").strip() or None
+        cc_audience = os.getenv(ENV_BACKEND_AUTH_AUDIENCE, "").strip() or None
+
+        from urllib.parse import urlparse, urlunparse
+        _cc_parsed = urlparse(cc_token_endpoint)
+        if not _cc_parsed.scheme or not _cc_parsed.hostname:
+            raise ValueError(
+                f"BACKEND_AUTH_TOKEN_ENDPOINT={cc_token_endpoint!r} is not a valid URL. "
+                "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
+            )
+        _cc_safe_endpoint = urlunparse(
+            _cc_parsed._replace(
+                netloc=_cc_parsed.hostname + (f":{_cc_parsed.port}" if _cc_parsed.port else "")
+            )
+        )
+
+        logger.info(
+            "Backend auth strategy: client_credentials (RFC 6749 §4.4) — endpoint=%s scope=%s audience=%s",
+            _cc_safe_endpoint,
+            cc_scope or "<not set>",
+            cc_audience or "<not set>",
+        )
+
+        return ClientCredentialsStrategy(
+            token_endpoint=cc_token_endpoint,
+            client_id=cc_client_id,
+            client_secret=cc_client_secret,
+            scope=cc_scope,
+            audience=cc_audience,
+        )
 
     # token_exchange — validate and build
     if not audience:
