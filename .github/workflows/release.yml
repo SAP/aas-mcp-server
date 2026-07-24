@@ -87,3 +87,33 @@ jobs:
           subject-name: ghcr.io/sap/aas-mcp-server
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+  # DEFERRED: PyPI publishing is intentionally disabled until SAP OSPO/NAAS onboarding completes.
+  # To enable: (1) complete the 7-step OSPO->NAAS->MOMA onboarding + PPMS FOSS entry (see RELEASE.md),
+  # (2) create the 'pypi:aas-mcp-server' GitHub environment with required reviewers,
+  # (3) remove the 'false &&' from the if condition below.
+  publish-pypi:
+    needs: release-please
+    if: ${{ false && needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    environment: pypi:aas-mcp-server
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
