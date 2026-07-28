@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir . && \
     groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid 1000 --no-create-home --shell /bin/false appuser
 
+LABEL org.opencontainers.image.source="https://github.com/SAP/aas-mcp-server"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 USER appuser
 
 # Note: config.yaml and OpenAPI specs must be provided via volume mounts
