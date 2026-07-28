@@ -4,12 +4,15 @@ This document describes how to cut a release and how to complete the one-time SA
 
 ## How a release is cut
 
-1. Merge a pull request to `main`. The `release.yml` workflow runs automatically.
-2. **release-please** opens (or updates) a "Release PR" that bumps `pyproject.toml`, updates `CHANGELOG.md`, and proposes the next version.
-3. A maintainer reviews and merges the Release PR.
-4. release-please tags the commit and publishes a GitHub Release.
-5. The `publish-docker` job runs automatically (gated by the `ghcr:aas-mcp-server` reviewer environment — a maintainer must approve the deployment).
-6. The `publish-pypi` job is **disabled** until SAP OSPO/NAAS onboarding completes (see below).
+The `release.yml` workflow is triggered **manually** via `workflow_dispatch` (Actions tab → Release → Run workflow). It does NOT run automatically on push to `main`.
+
+1. Run the **Release** workflow manually (`workflow_dispatch`). **release-please** opens (or updates) a "Release PR" that bumps `pyproject.toml`, updates `CHANGELOG.md`, and proposes the next version.
+2. A maintainer reviews and merges the Release PR.
+3. Run the **Release** workflow manually again (or it fires automatically if you add a `push` trigger). release-please detects the merged Release PR, tags the commit, and publishes a GitHub Release.
+4. The `publish-docker` job runs (gated by the `ghcr:aas-mcp-server` reviewer environment — a maintainer must approve the deployment).
+5. The `publish-pypi` job is **disabled** until SAP OSPO/NAAS onboarding completes (see below).
+
+> **Note on GITHUB_TOKEN and CI on Release PRs:** release-please opens the Release PR using `GITHUB_TOKEN`. GitHub's anti-recursion rule means that PRs created by `GITHUB_TOKEN` do not automatically trigger CI workflows. If branch protection requires passing checks before merge, you may need to close and reopen the Release PR, or push an empty commit to it, to trigger CI. Alternatively, a GitHub App token or PAT can be used instead of `GITHUB_TOKEN` to bypass this limitation.
 
 > **Note on `release-as`:** The config currently pins the first release to `v0.1.0` via `"release-as": "0.1.0"` in `release-please-config.json`. Remove (or update) this key after the first Release PR is merged, otherwise all subsequent releases will also be pinned to `0.1.0`.
 
@@ -19,7 +22,7 @@ This document describes how to cut a release and how to complete the one-time SA
 
 ## One-time GHCR onboarding (required before first Docker push)
 
-The `publish-docker` job pushes to `ghcr.io/SAP/aas-mcp-server`. Before the first push succeeds end-to-end, complete these steps:
+The `publish-docker` job pushes to `ghcr.io/sap/aas-mcp-server`. Before the first push succeeds end-to-end, complete these steps:
 
 ### 1. Request a Docker MOMA entry
 Open an issue in the SAP Open Source Outbound Request tracker and request a Docker(Hub) MOMA entry for this project. This is also used for GHCR.
