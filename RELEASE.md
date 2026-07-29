@@ -10,11 +10,15 @@ The `release.yml` workflow is triggered **manually** via `workflow_dispatch` (Ac
 2. A maintainer reviews and merges the Release PR.
 3. Run the **Release** workflow manually again (or it fires automatically if you add a `push` trigger). release-please detects the merged Release PR, tags the commit, and publishes a GitHub Release.
 4. The `publish-docker` job runs (gated by the `ghcr:aas-mcp-server` reviewer environment — a maintainer must approve the deployment).
-5. The `publish-pypi` job is **disabled** until SAP OSPO/NAAS onboarding completes (see below).
+5. The `publish-pypi` job is **enabled** via OIDC Trusted Publishing (gated by the `pypi:aas-mcp-server` reviewer environment — a maintainer must approve the deployment).
+
+> **Note on the two-run flow:** The first `workflow_dispatch` opens (or updates) the Release PR — Docker and PyPI publishing do NOT run on this first dispatch. Publishing only runs on the second run (second time) after merge of the Release PR.
 
 > **Note on GITHUB_TOKEN and CI on Release PRs:** release-please opens the Release PR using `GITHUB_TOKEN`. GitHub's anti-recursion rule means that PRs created by `GITHUB_TOKEN` do not automatically trigger CI workflows. If branch protection requires passing checks before merge, you may need to close and reopen the Release PR, or push an empty commit to it, to trigger CI. Alternatively, a GitHub App token or PAT can be used instead of `GITHUB_TOKEN` to bypass this limitation.
 
 > **Note on `release-as`:** The config currently pins the first release to `v0.1.0` via `"release-as": "0.1.0"` in `release-please-config.json`. Remove (or update) this key after the first Release PR is merged, otherwise all subsequent releases will also be pinned to `0.1.0`.
+
+> **Post-first-release checklist:** After the first Release PR merges and the release is published, remove `"release-as": "0.1.0"` from `release-please-config.json` (and confirm the manifest advanced to the next version). If this is not done, all subsequent releases will re-attempt version `0.1.0` and the PyPI publish step will hard-fail on version collision.
 
 > **Note on same-run fan-out:** The publish jobs run in the same `release.yml` workflow gated on `release_created`, rather than in a separate `on: release: published` workflow. This is intentional: release-please creates the GitHub Release using `GITHUB_TOKEN`, which cannot trigger a separate `on: release` workflow (GitHub anti-recursion rule). The behaviour is functionally equivalent.
 
@@ -42,9 +46,19 @@ Navigate to `https://github.com/orgs/SAP/packages/container/aas-mcp-server/setti
 
 ---
 
-## One-time PyPI onboarding (required before enabling the PyPI publish job)
+## PyPI publish troubleshooting
 
-The `publish-pypi` job is currently **disabled** (`false &&` guard in `release.yml`). It uses SAP's central PyPI account with OIDC Trusted Publishing — no stored token is needed. To enable it, complete the following 7-step SAP OSPO → NAAS → MOMA process:
+### Partial upload / version collision
+`skip-existing` is `false` (the default). If a publish partially succeeds (e.g. the sdist uploads but the wheel fails mid-transfer), a re-run will fail because the already-uploaded file cannot be overwritten. To recover: delete the partial upload from the PyPI project page, then re-run the Release workflow. Alternatively, set `skip-existing: true` in the `Publish to PyPI` step if retries are part of your operational model.
+
+### `release-as` version collision
+If `"release-as"` is still set in `release-please-config.json` after the first release, every subsequent release will attempt to publish the same version and fail. See the post-first-release checklist above.
+
+---
+
+## One-time PyPI onboarding (Completed)
+
+The `publish-pypi` job is now **enabled** via OIDC Trusted Publishing using SAP's central PyPI account — no stored token is needed. The following 7-step SAP OSPO → NAAS → MOMA onboarding process has been completed and is preserved here for reference:
 
 > **Name-squatting note:** PyPI has no dedicated SAP namespace. The package name `aas-mcp-server` is already public in this repository (`pyproject.toml`), so the "don't disclose early" advice is moot here. If the name is ever squatted before the first release, contact ospo@sap.com.
 
