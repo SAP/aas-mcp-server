@@ -92,13 +92,12 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  # DEFERRED: PyPI publishing is intentionally disabled until SAP OSPO/NAAS onboarding completes.
-  # To enable: (1) complete the 7-step OSPO->NAAS->MOMA onboarding + PPMS FOSS entry (see RELEASE.md),
-  # (2) create the 'pypi:aas-mcp-server' GitHub environment with required reviewers,
-  # (3) remove the 'false &&' from the if condition below.
+  # PyPI publishing uses OIDC Trusted Publishing (SAP central account, no token stored).
+  # Requires the 'pypi:aas-mcp-server' GitHub environment (reviewer-gated).
+  # attestations: false is set temporarily until PEP 740 upload is confirmed accepted by the PyPI project.
   publish-pypi:
     needs: release-please
-    if: ${{ false && needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     environment: pypi:aas-mcp-server
     permissions:
@@ -123,3 +122,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        with:
+          attestations: false
