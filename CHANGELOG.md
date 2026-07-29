@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.0 (2026-07-29)
+
+
+### Features
+
+* **release:** add deferred PyPI trusted-publish job (SAP OSPO spec, disabled) ([9c7ff14](https://github.com/SAP/aas-mcp-server/commit/9c7ff145a0071903e728f34d469758b6e23c7afe))
+* **release:** add release-please job as release spine ([feb0baa](https://github.com/SAP/aas-mcp-server/commit/feb0baa3c9662947638e027886c8b18879a1ed6d))
+* **release:** publish multi-arch image to GHCR with SBOM + attestation ([f9b8853](https://github.com/SAP/aas-mcp-server/commit/f9b885306cd92c9f3ba419b184618ad6c674272a))
+
+
+### Bug Fixes
+
+* **ci:** align lint job Python version to 3.12 ([fe87f80](https://github.com/SAP/aas-mcp-server/commit/fe87f802dd3ddf6583fd80a6d541c4f3285db3f7))
+
+
+### Documentation
+
+* **changelog:** revert to Unreleased so release-please authors the first changelog ([4839744](https://github.com/SAP/aas-mcp-server/commit/4839744ab78ea535e67b637d175b64aca94844d7))
+* fix misleading PyPI partial-upload recovery advice ([47ed624](https://github.com/SAP/aas-mcp-server/commit/47ed624adde1d17be4e167ec396989f42459c962))
+* mark PyPI publishing enabled and add release checklist notes ([e6875ad](https://github.com/SAP/aas-mcp-server/commit/e6875adf03b0cddc925961456d5eebef7ec75fc9))
+* **release:** correct manual dispatch flow, lowercase GHCR ref, GITHUB_TOKEN CI note ([e6037b9](https://github.com/SAP/aas-mcp-server/commit/e6037b95286fca5201247eb396b5bb23937b2eb7))
+* **release:** document SAP OSPO GHCR + PyPI onboarding prerequisites ([2059f82](https://github.com/SAP/aas-mcp-server/commit/2059f820ad769794dab4fa72a6234d8bda2547a4))
+
 ## [0.1.0](https://github.com/SAP/aas-mcp-server/compare/v0.1.0...v0.1.0) (2026-07-29)
 
 
