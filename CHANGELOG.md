@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0](https://github.com/SAP/aas-mcp-server/compare/v0.1.0...v0.1.0) (2026-07-29)
 
 
+### Documentation
+
+* fix misleading PyPI partial-upload recovery advice ([47ed624](https://github.com/SAP/aas-mcp-server/commit/47ed624adde1d17be4e167ec396989f42459c962))
+* mark PyPI publishing enabled and add release checklist notes ([e6875ad](https://github.com/SAP/aas-mcp-server/commit/e6875adf03b0cddc925961456d5eebef7ec75fc9))
+
+## [0.1.0](https://github.com/SAP/aas-mcp-server/compare/v0.1.0...v0.1.0) (2026-07-29)
+
+
 ### Features
 
 * **release:** add deferred PyPI trusted-publish job (SAP OSPO spec, disabled) ([9c7ff14](https://github.com/SAP/aas-mcp-server/commit/9c7ff145a0071903e728f34d469758b6e23c7afe))
