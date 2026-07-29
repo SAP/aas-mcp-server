@@ -48,8 +48,13 @@ Navigate to `https://github.com/orgs/SAP/packages/container/aas-mcp-server/setti
 
 ## PyPI publish troubleshooting
 
-### Partial upload / version collision
-`skip-existing` is `false` (the default). If a publish partially succeeds (e.g. the sdist uploads but the wheel fails mid-transfer), a re-run will fail because the already-uploaded file cannot be overwritten. To recover: delete the partial upload from the PyPI project page, then re-run the Release workflow. Alternatively, set `skip-existing: true` in the `Publish to PyPI` step if retries are part of your operational model.
+### Partial upload
+`skip-existing` is `false` (the default). If a publish partially succeeds (e.g. the sdist uploads but the wheel fails mid-transfer), a re-run will fail because PyPI does not allow re-uploading a filename once it has been accepted — **deleting the file from the PyPI project page does not help**, as the filename remains permanently reserved.
+
+Two recovery options:
+
+1. **Set `skip-existing: true`** in the `Publish to PyPI` step before re-running. This skips already-uploaded files and uploads only the missing ones. Remove the flag again after the release.
+2. **Cut a new version** (e.g. a post-release `0.1.0.post1`) if the already-uploaded artifact itself is bad and needs to be replaced.
 
 ### `release-as` version collision
 If `"release-as"` is still set in `release-please-config.json` after the first release, every subsequent release will attempt to publish the same version and fail. See the post-first-release checklist above.
