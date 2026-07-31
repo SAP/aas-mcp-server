@@ -93,6 +93,44 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 
 4. **Docker Build** - Verifies Docker image builds and runs
 
+5. **Docker Startup Integration Test** - Verifies the built image boots
+   successfully for all four AAS components (`aas-repo`, `submodel-repo`,
+   `aas-registry`, `submodel-registry`) via a per-component matrix job.
+   Each leg runs `scripts/ci/docker-startup-check.sh` which performs an MCP
+   `initialize` handshake and a short uptime check.
+
+## Docker Startup Integration Test (Local)
+
+The CI `integration-test` job is a thin wrapper around
+`scripts/ci/docker-startup-check.sh`, which any developer can run locally
+against a freshly built image:
+
+```bash
+# Build the image once
+docker build -t aas-mcp-server:test .
+
+# Run the check for any component
+scripts/ci/docker-startup-check.sh aas-repo \
+  tests/fixtures/integration/config.yaml.template \
+  tests/fixtures/integration/aas-repo-official-spec.yaml
+
+# Or loop over all four
+for c in aas-repo submodel-repo aas-registry submodel-registry; do
+  scripts/ci/docker-startup-check.sh "$c" \
+    tests/fixtures/integration/config.yaml.template \
+    "tests/fixtures/integration/${c}-official-spec.yaml"
+done
+```
+
+Environment variables:
+- `UPTIME_SECONDS` — how long the uptime phase waits (default `10`)
+- `IMAGE_TAG` — image tag to test (default `aas-mcp-server:test`)
+
+Fixtures used by this check live in `tests/fixtures/integration/` and are
+independent from the unit-test fixtures next door. See
+[tests/fixtures/integration/README.md](fixtures/integration/README.md) for
+the chunking rule that produced them from `docs/*.yaml`.
+
 ## Test Fixtures
 
 Test fixtures are defined in:
