@@ -118,15 +118,23 @@ echo "=== docker-startup-check: component=${COMPONENT} image=${IMAGE_TAG} uptime
 echo "--- Phase 1/2: MCP initialize + tools/list ---"
 
 EXPECTED_NAME="AAS MCP Server (${COMPONENT})"
-# Two JSON-RPC requests, newline-delimited: initialize then tools/list.
+# Three JSON-RPC messages, newline-delimited, per the MCP handshake protocol:
+#   1. initialize request (id=1) — server replies with serverInfo
+#   2. notifications/initialized — REQUIRED; without it FastMCP drops
+#      any subsequent request as "received request before initialization was complete"
+#   3. tools/list request (id=2) — server replies with the tool list
 # tools/list also gates on curation+spec having produced ≥1 tool, so a
 # mis-parsed allowlist (which would still pass a name-only check) fails here.
 INIT_REQUEST='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"docker-startup-check","version":"1.0"}}}'
+INITIALIZED_NOTIF='{"jsonrpc":"2.0","method":"notifications/initialized"}'
 TOOLS_REQUEST='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
 set +e
+# The trailing `sleep 2` holds stdin open so the server has time to flush the
+# `tools/list` reply before it sees EOF and starts shutting down. Without it
+# the check races and intermittently misses the id=2 response (~1 in 8 runs).
 HANDSHAKE_STDOUT="$(
-  printf '%s\n%s\n' "$INIT_REQUEST" "$TOOLS_REQUEST" \
+  { printf '%s\n%s\n%s\n' "$INIT_REQUEST" "$INITIALIZED_NOTIF" "$TOOLS_REQUEST"; sleep 2; } \
     | docker run --rm -i \
         "${MOUNT_ARGS[@]}" "${ENV_ARGS[@]}" \
         "$IMAGE_TAG" \
