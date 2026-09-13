@@ -75,18 +75,29 @@ fi
 # specs are visible to the container. <SPEC_PATH> itself is asserted to exist
 # for early-fail behaviour; the container reads it via /app/spec/<basename>.
 SPEC_DIR="$(dirname "$SPEC_PATH")"
-MOUNT_CONFIG="-v ${CONFIG_PATH}:/app/config/config.yaml:ro"
-MOUNT_SPEC="-v ${SPEC_DIR}:/app/spec:ro"
+# Arrays so paths containing spaces don't word-split when expanded into `docker run`.
+MOUNT_ARGS=(
+  -v "${CONFIG_PATH}:/app/config/config.yaml:ro"
+  -v "${SPEC_DIR}:/app/spec:ro"
+)
 
 ENV_ARGS=(
   -e "AAS_COMPONENT=${COMPONENT}"
   -e "AAS_BASE_URL=http://localhost:8081"
 )
 
-# Temp file for uptime-phase container ID; cleaned up on any exit.
-UPTIME_CIDFILE="$(mktemp -u)"
+# Private temp dir for state (uptime cidfile, handshake stderr).
+# `mktemp -d` avoids the TOCTOU window of `mktemp -u` (which returns a name
+# without creating the file). Docker's `--cidfile` requires that the target
+# path does NOT exist yet, hence we put the cidfile *inside* the dir.
+STATE_DIR="$(mktemp -d)"
+UPTIME_CIDFILE="${STATE_DIR}/container.cid"
+HANDSHAKE_LOG="${STATE_DIR}/handshake.stderr"
+
+# Cleanup takes an explicit exit code because `trap '... ; cleanup' EXIT` would
+# otherwise clobber $? with the exit code of the last command in the trap.
 cleanup() {
-  local rc=$?
+  local rc="${1:-$?}"
   if [[ -f "$UPTIME_CIDFILE" ]]; then
     local cid
     cid="$(cat "$UPTIME_CIDFILE" 2>/dev/null || true)"
@@ -94,41 +105,42 @@ cleanup() {
       docker stop --time 2 "$cid" >/dev/null 2>&1 || true
       docker rm -f "$cid"        >/dev/null 2>&1 || true
     fi
-    rm -f "$UPTIME_CIDFILE"
   fi
+  rm -rf "$STATE_DIR"
   exit "$rc"
 }
-trap cleanup EXIT INT TERM
+trap 'rc=$?; cleanup "$rc"' EXIT INT TERM
 
 echo "=== docker-startup-check: component=${COMPONENT} image=${IMAGE_TAG} uptime=${UPTIME_SECONDS}s ==="
 
 # ---------------------------------------------------- phase 1: handshake --
 
-echo "--- Phase 1/2: MCP initialize handshake ---"
+echo "--- Phase 1/2: MCP initialize + tools/list ---"
 
 EXPECTED_NAME="AAS MCP Server (${COMPONENT})"
+# Two JSON-RPC requests, newline-delimited: initialize then tools/list.
+# tools/list also gates on curation+spec having produced ≥1 tool, so a
+# mis-parsed allowlist (which would still pass a name-only check) fails here.
 INIT_REQUEST='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"docker-startup-check","version":"1.0"}}}'
+TOOLS_REQUEST='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
-HANDSHAKE_LOG="$(mktemp)"
-trap 'rm -f "$HANDSHAKE_LOG"; cleanup' EXIT INT TERM
-
-# We split docker's stdout (JSON-RPC replies) from stderr (server logs).
-# Only the last non-empty line of stdout is inspected — stdio MCP is line-delimited.
 set +e
 HANDSHAKE_STDOUT="$(
-  echo "$INIT_REQUEST" \
+  printf '%s\n%s\n' "$INIT_REQUEST" "$TOOLS_REQUEST" \
     | docker run --rm -i \
-        $MOUNT_CONFIG $MOUNT_SPEC "${ENV_ARGS[@]}" \
+        "${MOUNT_ARGS[@]}" "${ENV_ARGS[@]}" \
         "$IMAGE_TAG" \
         2> "$HANDSHAKE_LOG"
 )"
 HANDSHAKE_RC=$?
 set -e
 
-HANDSHAKE_LINE="$(echo "$HANDSHAKE_STDOUT" | awk 'NF{last=$0} END{print last}')"
+# stdio MCP is line-delimited JSON; match responses by id.
+INIT_LINE="$(echo "$HANDSHAKE_STDOUT"   | jq -c 'select(.id==1)' 2>/dev/null | head -n1)"
+TOOLS_LINE="$(echo "$HANDSHAKE_STDOUT"  | jq -c 'select(.id==2)' 2>/dev/null | head -n1)"
 
-if [[ "$HANDSHAKE_RC" -ne 0 ]] || [[ -z "$HANDSHAKE_LINE" ]]; then
-  echo "ERROR: handshake container exited with rc=$HANDSHAKE_RC or produced no stdout" >&2
+if [[ "$HANDSHAKE_RC" -ne 0 ]] || [[ -z "$INIT_LINE" ]] || [[ -z "$TOOLS_LINE" ]]; then
+  echo "ERROR: handshake container exited with rc=$HANDSHAKE_RC or missing id=1/id=2 response" >&2
   echo "--- container stderr ---" >&2
   cat "$HANDSHAKE_LOG" >&2 || true
   echo "--- container stdout ---" >&2
@@ -136,18 +148,27 @@ if [[ "$HANDSHAKE_RC" -ne 0 ]] || [[ -z "$HANDSHAKE_LINE" ]]; then
   exit 1
 fi
 
-if ! echo "$HANDSHAKE_LINE" | jq -e --arg name "$EXPECTED_NAME" '.result.serverInfo.name == $name' >/dev/null; then
-  echo "ERROR: handshake response did not match expected serverInfo.name=\"$EXPECTED_NAME\"" >&2
+if ! echo "$INIT_LINE" | jq -e --arg name "$EXPECTED_NAME" '.result.serverInfo.name == $name' >/dev/null; then
+  echo "ERROR: initialize response did not match expected serverInfo.name=\"$EXPECTED_NAME\"" >&2
   echo "--- response line ---" >&2
-  echo "$HANDSHAKE_LINE" >&2
+  echo "$INIT_LINE" >&2
   echo "--- container stderr ---" >&2
   cat "$HANDSHAKE_LOG" >&2 || true
   exit 1
 fi
 
-echo "OK: serverInfo.name == \"$EXPECTED_NAME\""
-rm -f "$HANDSHAKE_LOG"
-trap cleanup EXIT INT TERM
+if ! echo "$TOOLS_LINE" | jq -e '.result.tools | length > 0' >/dev/null; then
+  TOOL_COUNT="$(echo "$TOOLS_LINE" | jq -r '.result.tools | length' 2>/dev/null || echo "?")"
+  echo "ERROR: tools/list returned $TOOL_COUNT tools (expected ≥1); spec + curation loaded nothing" >&2
+  echo "--- response line ---" >&2
+  echo "$TOOLS_LINE" >&2
+  echo "--- container stderr ---" >&2
+  cat "$HANDSHAKE_LOG" >&2 || true
+  exit 1
+fi
+
+TOOL_COUNT="$(echo "$TOOLS_LINE" | jq -r '.result.tools | length')"
+echo "OK: serverInfo.name == \"$EXPECTED_NAME\", tools/list returned $TOOL_COUNT tools"
 
 # ------------------------------------------------------ phase 2: uptime --
 
@@ -155,10 +176,9 @@ echo "--- Phase 2/2: uptime check (${UPTIME_SECONDS}s) ---"
 
 # `-i` keeps stdin attached; the server blocks on stdin.readline() and will not
 # exit on its own. `-d` detaches so we can inspect it after N seconds.
-# The docker CLI does NOT close the container's stdin here — it just detaches.
 docker run -d -i \
   --cidfile "$UPTIME_CIDFILE" \
-  $MOUNT_CONFIG $MOUNT_SPEC "${ENV_ARGS[@]}" \
+  "${MOUNT_ARGS[@]}" "${ENV_ARGS[@]}" \
   "$IMAGE_TAG" \
   >/dev/null
 

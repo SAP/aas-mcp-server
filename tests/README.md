@@ -129,7 +129,9 @@ Environment variables:
 Fixtures used by this check live in `tests/fixtures/integration/` and are
 independent from the unit-test fixtures next door. See
 [tests/fixtures/integration/README.md](fixtures/integration/README.md) for
-the chunking rule that produced them from `docs/*.yaml`.
+the chunking rule (the derived fixtures come from the external
+[aas-specs](https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi)
+repo; `aas-repo` is hand-authored).
 
 ## Test Fixtures
 
