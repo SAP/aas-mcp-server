@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: Asset Administration Shell Registry Service (integration test fixture)
+  description: |
+    Minimal fixture derived by manual chunking from the official IDTA
+    Asset Administration Shell Registry Service OpenAPI spec (see aas-specs
+    repo). Retains original operationIds and a small, representative subset
+    of endpoints. Used only by the CI docker startup smoke test.
+  version: V3.1.3_SSP-001
+paths:
+  /shell-descriptors:
+    get:
+      tags:
+        - Asset Administration Shell Registry API
+      summary: Returns all Asset Administration Shell Descriptors
+      operationId: GetAllAssetAdministrationShellDescriptors
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Requested Asset Administration Shell Descriptors
+    post:
+      tags:
+        - Asset Administration Shell Registry API
+      summary: Creates a new Asset Administration Shell Descriptor
+      operationId: PostAssetAdministrationShellDescriptor
+      responses:
+        '201':
+          description: Asset Administration Shell Descriptor created
+  /shell-descriptors/{aasIdentifier}:
+    get:
+      tags:
+        - Asset Administration Shell Registry API
+      summary: Returns a specific Asset Administration Shell Descriptor
+      operationId: GetAssetAdministrationShellDescriptorById
+      parameters:
+        - name: aasIdentifier
+          in: path
+          description: The Asset Administration Shell's unique id (UTF8-BASE64-URL-encoded)
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Requested Asset Administration Shell Descriptor
+        '404':
+          description: Asset Administration Shell Descriptor not found
+    delete:
+      tags:
+        - Asset Administration Shell Registry API
+      summary: Deletes an Asset Administration Shell Descriptor
+      operationId: DeleteAssetAdministrationShellDescriptorById
+      parameters:
+        - name: aasIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Asset Administration Shell Descriptor deleted
