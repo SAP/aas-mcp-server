@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and aas-mcp-server contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Integration-test config used by scripts/ci/docker-startup-check.sh.
+# Each component points at its hand-picked / hand-authored fixture spec
+# mounted into the container at /app/spec/. Curation exposes all GETs
+# with wildcards so the server has something to load without a real
+# implementation spec.
+
+components:
+  aas-repo:
+    official_spec: /app/spec/aas-repo-official-spec.yaml
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  submodel-repo:
+    official_spec: /app/spec/submodel-repo-official-spec.yaml
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  aas-registry:
+    official_spec: /app/spec/aas-registry-official-spec.yaml
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  submodel-registry:
+    official_spec: /app/spec/submodel-registry-official-spec.yaml
+    curation:
+      allowlist:
+        - [get, "*"]

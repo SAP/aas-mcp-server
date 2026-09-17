@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: Submodel Repository Service (integration test fixture)
+  description: |
+    Minimal fixture derived by manual chunking from the official IDTA
+    Submodel Repository Service OpenAPI spec (see aas-specs repo). Retains
+    original operationIds and a small, representative subset of endpoints.
+    Used only by the CI docker startup smoke test.
+  version: V3.1.3_SSP-001
+paths:
+  /submodels:
+    get:
+      tags:
+        - Submodel Repository API
+      summary: Returns all Submodels
+      operationId: GetAllSubmodels
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Requested Submodels
+    post:
+      tags:
+        - Submodel Repository API
+      summary: Creates a new Submodel
+      operationId: PostSubmodel
+      responses:
+        '201':
+          description: Submodel created
+  /submodels/{submodelIdentifier}:
+    get:
+      tags:
+        - Submodel Repository API
+      summary: Returns a specific Submodel
+      operationId: GetSubmodelById
+      parameters:
+        - name: submodelIdentifier
+          in: path
+          description: The Submodel's unique id (UTF8-BASE64-URL-encoded)
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Requested Submodel
+        '404':
+          description: Submodel not found
+    delete:
+      tags:
+        - Submodel Repository API
+      summary: Deletes a Submodel
+      operationId: DeleteSubmodelById
+      parameters:
+        - name: submodelIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Submodel deleted

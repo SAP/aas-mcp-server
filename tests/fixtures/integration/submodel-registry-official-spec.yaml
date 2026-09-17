@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: Submodel Registry Service (integration test fixture)
+  description: |
+    Minimal fixture derived by manual chunking from the official IDTA
+    Submodel Registry Service OpenAPI spec (see aas-specs repo). Retains
+    original operationIds and a small, representative subset of endpoints.
+    Used only by the CI docker startup smoke test.
+  version: V3.1.3_SSP-001
+paths:
+  /submodel-descriptors:
+    get:
+      tags:
+        - Submodel Registry API
+      summary: Returns all Submodel Descriptors
+      operationId: GetAllSubmodelDescriptors
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Requested Submodel Descriptors
+    post:
+      tags:
+        - Submodel Registry API
+      summary: Creates a new Submodel Descriptor
+      operationId: PostSubmodelDescriptor
+      responses:
+        '201':
+          description: Submodel Descriptor created
+  /submodel-descriptors/{submodelIdentifier}:
+    get:
+      tags:
+        - Submodel Registry API
+      summary: Returns a specific Submodel Descriptor
+      operationId: GetSubmodelDescriptorById
+      parameters:
+        - name: submodelIdentifier
+          in: path
+          description: The Submodel's unique id (UTF8-BASE64-URL-encoded)
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Requested Submodel Descriptor
+        '404':
+          description: Submodel Descriptor not found
+    delete:
+      tags:
+        - Submodel Registry API
+      summary: Deletes a Submodel Descriptor
+      operationId: DeleteSubmodelDescriptorById
+      parameters:
+        - name: submodelIdentifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Submodel Descriptor deleted
