@@ -3,6 +3,7 @@
 
 """Tests for backend_auth module — pluggable backend token strategies."""
 
+import logging
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from aas_mcp_server.backend_auth import (
     NoneStrategy,
     TokenExchangeStrategy,
     _discover_token_endpoint,
+    _sanitize_endpoint_for_logging,
     build_backend_token_provider,
 )
 from aas_mcp_server.constants import (
@@ -924,3 +926,200 @@ class TestDiscoverTokenEndpoint:
         mock_get.return_value.json.return_value = {"issuer": "https://idp.example.com"}
         with pytest.raises(ValueError, match="token_endpoint"):
             _discover_token_endpoint("https://idp.example.com")
+
+
+# ---------------------------------------------------------------------------
+# Endpoint sanitization for logs and error messages (#42)
+# ---------------------------------------------------------------------------
+
+class TestSanitizeEndpointForLogging:
+    def test_plain_url_is_unchanged(self):
+        assert (
+            _sanitize_endpoint_for_logging("https://idp.example.com/oauth/token")
+            == "https://idp.example.com/oauth/token"
+        )
+
+    def test_keeps_explicit_port(self):
+        assert (
+            _sanitize_endpoint_for_logging("https://idp.example.com:8443/oauth/token")
+            == "https://idp.example.com:8443/oauth/token"
+        )
+
+    def test_rewraps_ipv6_host_in_brackets(self):
+        """urlparse().hostname drops the brackets; without them the URL is malformed."""
+        assert (
+            _sanitize_endpoint_for_logging("https://[::1]:8080/oauth/token")
+            == "https://[::1]:8080/oauth/token"
+        )
+
+    def test_rewraps_ipv6_host_without_port(self):
+        assert (
+            _sanitize_endpoint_for_logging("https://[2001:db8::1]/oauth/token")
+            == "https://[2001:db8::1]/oauth/token"
+        )
+
+    def test_drops_query_and_fragment(self):
+        assert (
+            _sanitize_endpoint_for_logging("https://idp.example.com/oauth/token?client_secret=s3cr3t#frag")
+            == "https://idp.example.com/oauth/token"
+        )
+
+    def test_drops_userinfo(self):
+        assert (
+            _sanitize_endpoint_for_logging("https://user:pass@idp.example.com/oauth/token")
+            == "https://idp.example.com/oauth/token"
+        )
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "",
+            "idp.example.com/oauth/token",
+            "https:///oauth/token",
+            "https://idp.example.com:notaport/oauth/token",
+        ],
+    )
+    def test_rejects_url_without_scheme_host_or_integer_port(self, bad):
+        with pytest.raises(ValueError):
+            _sanitize_endpoint_for_logging(bad)
+
+
+class TestStrategiesDoNotLeakRawEndpoint:
+    """The request goes to the full endpoint; logs and errors only ever see the sanitized one."""
+
+    RAW_ENDPOINT = "https://idp.example.com/oauth/token?client_secret=s3cr3t"
+    SAFE_ENDPOINT = "https://idp.example.com/oauth/token"
+
+    def _token_exchange(self) -> TokenExchangeStrategy:
+        return TokenExchangeStrategy(
+            token_endpoint=self.RAW_ENDPOINT,
+            client_id="mcp-client-id",
+            client_secret="mcp-secret",
+            audience="backend-client-id",
+            scope=None,
+        )
+
+    def _client_credentials(self) -> ClientCredentialsStrategy:
+        return ClientCredentialsStrategy(
+            token_endpoint=self.RAW_ENDPOINT,
+            client_id="cid",
+            client_secret="csec",
+            scope=None,
+            audience=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_token_exchange_http_error_message_is_sanitized(self):
+        import httpx as _httpx
+
+        mock_upstream = MagicMock()
+        mock_upstream.token = "user-token"
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.raise_for_status = MagicMock(
+            side_effect=_httpx.HTTPStatusError("400", request=MagicMock(), response=mock_response)
+        )
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = self._token_exchange()
+            with pytest.raises(RuntimeError) as exc_info:
+                await strategy.get_token()
+
+        assert "s3cr3t" not in str(exc_info.value)
+        assert self.SAFE_ENDPOINT in str(exc_info.value)
+        # The request itself must still go to the endpoint exactly as configured.
+        assert mock_client.post.await_args.args[0] == self.RAW_ENDPOINT
+
+    @pytest.mark.asyncio
+    async def test_token_exchange_debug_log_is_sanitized(self, caplog):
+        mock_upstream = MagicMock()
+        mock_upstream.token = "user-token"
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"access_token": "backend-token"}
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        caplog.set_level(logging.DEBUG, logger="aas_mcp_server.backend_auth")
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            assert await self._token_exchange().get_token() == "backend-token"
+
+        assert "s3cr3t" not in caplog.text
+        assert self.SAFE_ENDPOINT in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_client_credentials_network_error_message_is_sanitized(self):
+        import httpx as _httpx
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=_httpx.RequestError("connection refused"))
+
+        with patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = self._client_credentials()
+            with pytest.raises(RuntimeError) as exc_info:
+                await strategy.get_token()
+
+        assert "s3cr3t" not in str(exc_info.value)
+        assert f"BACKEND_AUTH_TOKEN_ENDPOINT ({self.SAFE_ENDPOINT})" in str(exc_info.value)
+        assert mock_client.post.await_args.args[0] == self.RAW_ENDPOINT
+
+    @pytest.mark.asyncio
+    async def test_client_credentials_debug_log_is_sanitized(self, caplog):
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"access_token": "svc-token", "expires_in": 3600}
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        caplog.set_level(logging.DEBUG, logger="aas_mcp_server.backend_auth")
+        with patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            assert await self._client_credentials().get_token() == "svc-token"
+
+        assert "s3cr3t" not in caplog.text
+        assert self.SAFE_ENDPOINT in caplog.text
+
+    def test_invalid_endpoint_is_rejected_at_construction(self):
+        with pytest.raises(ValueError):
+            ClientCredentialsStrategy(
+                token_endpoint="not a url",
+                client_id="cid",
+                client_secret="csec",
+                scope=None,
+                audience=None,
+            )
+
+
+class TestFactoryLogsSanitizedEndpoint:
+    RAW_IPV6_ENDPOINT = "https://[::1]:8080/oauth/token?client_secret=s3cr3t"
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
+        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+    }, clear=True)
+    def test_client_credentials_info_log_brackets_ipv6_and_drops_query(self, caplog):
+        caplog.set_level(logging.INFO, logger="aas_mcp_server.backend_auth")
+        provider = build_backend_token_provider()
+        assert isinstance(provider, ClientCredentialsStrategy)
+        assert provider.token_endpoint == self.RAW_IPV6_ENDPOINT
+        assert "endpoint=https://[::1]:8080/oauth/token scope=" in caplog.text
+        assert "s3cr3t" not in caplog.text
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
+        ENV_BACKEND_AUTH_CLIENT_ID: "mcp-cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-csec",
+    }, clear=True)
+    def test_token_exchange_info_log_brackets_ipv6_and_drops_query(self, caplog):
+        caplog.set_level(logging.INFO, logger="aas_mcp_server.backend_auth")
+        provider = build_backend_token_provider()
+        assert isinstance(provider, TokenExchangeStrategy)
+        assert provider.token_endpoint == self.RAW_IPV6_ENDPOINT
+        assert "endpoint=https://[::1]:8080/oauth/token audience=" in caplog.text
+        assert "s3cr3t" not in caplog.text

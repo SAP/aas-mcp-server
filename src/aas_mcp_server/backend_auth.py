@@ -36,6 +36,7 @@ import logging
 import os
 import time
 from typing import Protocol, runtime_checkable
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from fastmcp.server.dependencies import get_access_token
@@ -70,6 +71,31 @@ EXPIRY_BUFFER_SECONDS = 30
 # Fallback lifetime when a client_credentials token response omits `expires_in`.
 # Conservative: refresh often rather than reuse a token whose true expiry is unknown.
 DEFAULT_TOKEN_LIFETIME_SECONDS = 300
+
+
+def _sanitize_endpoint_for_logging(url: str) -> str:
+    """Return the form of a token endpoint URL that may appear in logs and errors.
+
+    Keeps scheme, host, port and path. Drops userinfo, query and fragment: the
+    endpoint comes from operator-set configuration and may carry a credential or
+    a session parameter in those parts, and a log line lives much longer than
+    the request that produced it.
+
+    IPv6 hosts are re-wrapped in brackets. ``urlparse().hostname`` strips them,
+    so reassembling the URL from ``hostname`` alone yields ``https://::1:8080/``.
+
+    Raises ValueError when the URL has no scheme or host, or a port that is not
+    an integer — the same conditions build_backend_token_provider() rejects.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    port = parsed.port  # raises ValueError when the port is not an integer
+    if not parsed.scheme or not host:
+        raise ValueError(f"{url!r} is not a valid URL: scheme and host are required")
+    if ":" in host:
+        host = f"[{host}]"
+    netloc = f"{host}:{port}" if port else host
+    return urlunparse(parsed._replace(netloc=netloc, query="", fragment=""))
 
 
 @runtime_checkable
@@ -131,6 +157,9 @@ class TokenExchangeStrategy:
         scope: str | None,
     ) -> None:
         self.token_endpoint = token_endpoint
+        # Sanitized once here so that no log line or error message below has to
+        # remember to do it. Also rejects an endpoint without scheme or host.
+        self._safe_endpoint = _sanitize_endpoint_for_logging(token_endpoint)
         self.client_id = client_id
         self.client_secret = client_secret
         self.audience = audience
@@ -156,7 +185,7 @@ class TokenExchangeStrategy:
 
         logger.debug(
             "TokenExchangeStrategy: exchanging token at %s for audience=%s scope=%s",
-            self.token_endpoint,
+            self._safe_endpoint,
             self.audience,
             self.scope or "<not set>",
         )
@@ -170,7 +199,7 @@ class TokenExchangeStrategy:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise RuntimeError(
-                f"Backend token exchange failed at {self.token_endpoint}: "
+                f"Backend token exchange failed at {self._safe_endpoint}: "
                 f"HTTP {exc.response.status_code}. "
                 f"Check BACKEND_AUTH_AUDIENCE, BACKEND_AUTH_CLIENT_ID, and that "
                 f"the IdP is configured to allow token exchange for this client."
@@ -178,21 +207,21 @@ class TokenExchangeStrategy:
         except httpx.RequestError as exc:
             raise RuntimeError(
                 f"Backend token exchange request failed: {exc}. "
-                f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self.token_endpoint}) is reachable."
+                f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
             ) from exc
 
         try:
             payload = response.json()
         except Exception as exc:
             raise RuntimeError(
-                f"Backend token exchange at {self.token_endpoint} returned a non-JSON response "
+                f"Backend token exchange at {self._safe_endpoint} returned a non-JSON response "
                 f"(content-type: {response.headers.get('content-type', '<unknown>')}). "
                 f"Expected an OAuth 2.0 token response with 'access_token'."
             ) from exc
 
         if "access_token" not in payload:
             raise RuntimeError(
-                f"Backend token exchange at {self.token_endpoint} succeeded (HTTP 200) but "
+                f"Backend token exchange at {self._safe_endpoint} succeeded (HTTP 200) but "
                 f"the response is missing the 'access_token' field. "
                 f"Check that the IdP is returning a valid OAuth 2.0 token response."
             )
@@ -255,6 +284,8 @@ class ClientCredentialsStrategy:
         audience: str | None,
     ) -> None:
         self.token_endpoint = token_endpoint
+        # See TokenExchangeStrategy: sanitized once, used by every log and error.
+        self._safe_endpoint = _sanitize_endpoint_for_logging(token_endpoint)
         self.client_id = client_id
         self.client_secret = client_secret
         self.scope = scope
@@ -284,7 +315,7 @@ class ClientCredentialsStrategy:
 
             logger.debug(
                 "ClientCredentialsStrategy: fetching new token at %s scope=%s audience=%s",
-                self.token_endpoint,
+                self._safe_endpoint,
                 self.scope or "<not set>",
                 self.audience or "<not set>",
             )
@@ -298,7 +329,7 @@ class ClientCredentialsStrategy:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 raise RuntimeError(
-                    f"Backend client_credentials token request failed at {self.token_endpoint}: "
+                    f"Backend client_credentials token request failed at {self._safe_endpoint}: "
                     f"HTTP {exc.response.status_code}. "
                     f"Check BACKEND_AUTH_CLIENT_ID, BACKEND_AUTH_CLIENT_SECRET, and that the IdP "
                     f"is configured to allow the client_credentials grant for this client."
@@ -306,14 +337,14 @@ class ClientCredentialsStrategy:
             except httpx.RequestError as exc:
                 raise RuntimeError(
                     f"Backend client_credentials token request failed: {exc}. "
-                    f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self.token_endpoint}) is reachable."
+                    f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
                 ) from exc
 
             try:
                 payload = response.json()
             except Exception as exc:
                 raise RuntimeError(
-                    f"Backend client_credentials token request at {self.token_endpoint} returned "
+                    f"Backend client_credentials token request at {self._safe_endpoint} returned "
                     f"a non-JSON response (content-type: "
                     f"{response.headers.get('content-type', '<unknown>')}). "
                     f"Expected an OAuth 2.0 token response with 'access_token'."
@@ -321,7 +352,7 @@ class ClientCredentialsStrategy:
 
             if "access_token" not in payload:
                 raise RuntimeError(
-                    f"Backend client_credentials token request at {self.token_endpoint} succeeded "
+                    f"Backend client_credentials token request at {self._safe_endpoint} succeeded "
                     f"(HTTP 200) but the response is missing the 'access_token' field. "
                     f"Check that the IdP is returning a valid OAuth 2.0 token response."
                 )
@@ -402,7 +433,11 @@ def _discover_token_endpoint(issuer_url: str) -> str:
             f"Set BACKEND_AUTH_TOKEN_ENDPOINT explicitly."
         )
 
-    logger.debug("OIDC discovery: token_endpoint=%s (from %s)", token_endpoint, discovery_url)
+    logger.debug(
+        "OIDC discovery: token_endpoint=%s (from %s)",
+        _sanitize_endpoint_for_logging(token_endpoint),
+        discovery_url,
+    )
     return token_endpoint
 
 
@@ -455,7 +490,7 @@ def build_backend_token_provider() -> BackendTokenProvider:
             cc_token_endpoint = _discover_token_endpoint(cc_issuer_url)
             logger.debug(
                 "BACKEND_AUTH_TOKEN_ENDPOINT not set — discovered via OIDC metadata: %s",
-                cc_token_endpoint,
+                _sanitize_endpoint_for_logging(cc_token_endpoint),
             )
 
         cc_client_id = (
@@ -483,18 +518,13 @@ def build_backend_token_provider() -> BackendTokenProvider:
         cc_scope = os.getenv(ENV_BACKEND_AUTH_SCOPE, "").strip() or None
         cc_audience = os.getenv(ENV_BACKEND_AUTH_AUDIENCE, "").strip() or None
 
-        from urllib.parse import urlparse, urlunparse
-        _cc_parsed = urlparse(cc_token_endpoint)
-        if not _cc_parsed.scheme or not _cc_parsed.hostname:
+        try:
+            _cc_safe_endpoint = _sanitize_endpoint_for_logging(cc_token_endpoint)
+        except ValueError as exc:
             raise ValueError(
                 f"BACKEND_AUTH_TOKEN_ENDPOINT={cc_token_endpoint!r} is not a valid URL. "
                 "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
-            )
-        _cc_safe_endpoint = urlunparse(
-            _cc_parsed._replace(
-                netloc=_cc_parsed.hostname + (f":{_cc_parsed.port}" if _cc_parsed.port else "")
-            )
-        )
+            ) from exc
 
         logger.info(
             "Backend auth strategy: client_credentials (RFC 6749 §4.4) — endpoint=%s scope=%s audience=%s",
@@ -531,7 +561,7 @@ def build_backend_token_provider() -> BackendTokenProvider:
         token_endpoint = _discover_token_endpoint(issuer_url)
         logger.debug(
             "BACKEND_AUTH_TOKEN_ENDPOINT not set — discovered via OIDC metadata: %s",
-            token_endpoint,
+            _sanitize_endpoint_for_logging(token_endpoint),
         )
 
     # Client credentials: BACKEND_AUTH_CLIENT_ID overrides OAUTH_CLIENT_ID
@@ -559,14 +589,13 @@ def build_backend_token_provider() -> BackendTokenProvider:
 
     scope = os.getenv(ENV_BACKEND_AUTH_SCOPE, "").strip() or None
 
-    from urllib.parse import urlparse, urlunparse
-    _parsed = urlparse(token_endpoint)
-    if not _parsed.scheme or not _parsed.hostname:
+    try:
+        _safe_endpoint = _sanitize_endpoint_for_logging(token_endpoint)
+    except ValueError as exc:
         raise ValueError(
             f"BACKEND_AUTH_TOKEN_ENDPOINT={token_endpoint!r} is not a valid URL. "
             "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
-        )
-    _safe_endpoint = urlunparse(_parsed._replace(netloc=_parsed.hostname + (f":{_parsed.port}" if _parsed.port else "")))
+        ) from exc
 
     logger.info(
         "Backend auth strategy: token_exchange (RFC 8693) — endpoint=%s audience=%s scope=%s",
