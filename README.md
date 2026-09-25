@@ -39,18 +39,23 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 3. **Run**:
    ```bash
-   # Docker (recommended)
+   # Docker (recommended) — pulls the pre-built image from GitHub Container Registry
    docker run \
      -v $(pwd)/config.yaml:/app/config/config.yaml \
      -v $(pwd)/specs:/app/specs \
      -e AAS_COMPONENT=aas-repo \
      -e AAS_BASE_URL=http://your-backend:8080 \
-     -i aas-mcp-server
+     -i ghcr.io/sap/aas-mcp-server:latest
 
    # Or install locally
    pip install -e .
    aas-mcp-server --component aas-repo --base-url http://localhost:8080 --config config.yaml
    ```
+
+   The image is published as multi-arch (`linux/amd64`, `linux/arm64`) at
+   [`ghcr.io/sap/aas-mcp-server`](https://github.com/SAP/aas-mcp-server/pkgs/container/aas-mcp-server).
+   Available tags: `latest`, `<major>.<minor>` (e.g. `0.1`), and `<version>` (e.g. `0.1.0`).
+   No login is needed — the package is public.
 
 ## Configuration
 
@@ -173,6 +178,11 @@ authentication setup, and write-mode configuration for every client.
 
 ## Docker Usage
 
+The pre-built image is published to GitHub Container Registry at
+`ghcr.io/sap/aas-mcp-server` (multi-arch `linux/amd64` + `linux/arm64`, SBOM
+and build-provenance attested). The examples below use `:latest`; pin to a
+specific version (`:0.1.0`) or minor line (`:0.1`) for reproducible deployments.
+
 ### Basic (stdio — local use, no auth)
 
 ```bash
@@ -181,7 +191,7 @@ docker run \
   -v $(pwd)/specs:/app/specs \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
-  -i aas-mcp-server
+  -i ghcr.io/sap/aas-mcp-server:latest
 ```
 
 ### HTTP Transport with OAuth 2.1
@@ -203,7 +213,7 @@ docker run \
   -e OAUTH_CLIENT_SECRET=your-client-secret \
   -e OAUTH_SERVER_BASE_URL=http://localhost:8000 \
   -p 8000:8000 \
-  aas-mcp-server
+  ghcr.io/sap/aas-mcp-server:latest
 ```
 
 Register with an MCP client (example using Claude CLI):
@@ -225,7 +235,7 @@ docker run \
   -e CONFIG_PATH=/custom/config.yaml \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
-  -i aas-mcp-server
+  -i ghcr.io/sap/aas-mcp-server:latest
 ```
 
 ## OAuth 2.1 Authorization
