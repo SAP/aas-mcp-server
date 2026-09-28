@@ -253,6 +253,205 @@ class TestTokenExchangeStrategy:
             "expected at most 1 (client should be reused, not created per request)"
         )
 
+    # ------------------------------------------------------------------
+    # Per-subject caching (issue #40)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_same_upstream_token_reuses_cached_exchange(self):
+        """Two get_token() calls with the same upstream token → one POST to the IdP."""
+        mock_upstream = MagicMock()
+        mock_upstream.token = "same-user-token"
+
+        mock_client, _ = self._make_mock_client(
+            {"access_token": "backend-token", "token_type": "Bearer", "expires_in": 3600}
+        )
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+            first = await strategy.get_token()
+            second = await strategy.get_token()
+
+        assert first == second == "backend-token"
+        assert mock_client.post.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_different_upstream_tokens_get_independent_exchanges(self):
+        """Two get_token() calls with different upstream tokens → two POSTs, each caller
+        receives only its own exchanged token."""
+        # Make the exchange response depend on the subject_token in the POST body.
+        def build_response(subject_token: str):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.raise_for_status = MagicMock()
+            resp.headers = {"content-type": "application/json"}
+            resp.json.return_value = {
+                "access_token": f"backend-for-{subject_token}",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
+            return resp
+
+        async def post(*args, **kwargs):
+            subj = kwargs["data"]["subject_token"]
+            return build_response(subj)
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=post)
+
+        upstream_a = MagicMock()
+        upstream_a.token = "user-A-token"
+        upstream_b = MagicMock()
+        upstream_b.token = "user-B-token"
+
+        with patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+
+            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+                a_token = await strategy.get_token()
+            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b):
+                b_token = await strategy.get_token()
+            # Now user A comes back — should hit the cache, not the IdP.
+            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+                a_token_again = await strategy.get_token()
+
+        # Per-subject isolation: A never gets B's token, B never gets A's.
+        assert a_token == "backend-for-user-A-token"
+        assert b_token == "backend-for-user-B-token"
+        assert a_token_again == a_token
+        assert mock_client.post.await_count == 2  # one per distinct upstream token
+
+    @pytest.mark.asyncio
+    async def test_upstream_b_never_receives_a_cached_exchanged_token(self):
+        """Security-critical: even after A's exchange is cached, B's call must fetch
+        a fresh token — never reuse A's cache entry under any circumstance."""
+        upstream_a = MagicMock()
+        upstream_a.token = "token-A"
+        upstream_b = MagicMock()
+        upstream_b.token = "token-B"
+
+        responses = iter([
+            {"access_token": "A-backend-token", "expires_in": 3600},
+            {"access_token": "B-backend-token", "expires_in": 3600},
+        ])
+
+        async def post(*args, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {"content-type": "application/json"}
+            resp.json.return_value = next(responses)
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=post)
+
+        with patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+                a_token = await strategy.get_token()
+            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b):
+                b_token = await strategy.get_token()
+
+        assert a_token == "A-backend-token"
+        assert b_token == "B-backend-token"
+        assert a_token != b_token
+        assert mock_client.post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_expired_exchanged_token_triggers_reexchange(self):
+        """Once a cached exchange is past the expiry buffer, next get_token() re-exchanges."""
+        mock_upstream = MagicMock()
+        mock_upstream.token = "user-token"
+
+        responses = iter([
+            {"access_token": "backend-token-1", "expires_in": 3600},
+            {"access_token": "backend-token-2", "expires_in": 3600},
+        ])
+
+        async def post(*args, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {"content-type": "application/json"}
+            resp.json.return_value = next(responses)
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=post)
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+            first = await strategy.get_token()
+
+            # Reach into the cache and force the sole entry to look expired.
+            for entry in strategy._cache._entries.values():  # type: ignore[attr-defined]
+                entry.expires_at = 0.0
+
+            second = await strategy.get_token()
+
+        assert first == "backend-token-1"
+        assert second == "backend-token-2"
+        assert mock_client.post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_concurrent_same_user_requests_coalesce(self):
+        """N parallel get_token() calls for the same upstream token → one exchange only."""
+        import asyncio
+
+        mock_upstream = MagicMock()
+        mock_upstream.token = "user-token"
+
+        # Make the mocked POST slow so concurrent callers actually pile up on the lock.
+        async def slow_post(*args, **kwargs):
+            await asyncio.sleep(0.02)
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.headers = {"content-type": "application/json"}
+            resp.json.return_value = {"access_token": "coalesced-backend-token", "expires_in": 3600}
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=slow_post)
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+            results = await asyncio.gather(*(strategy.get_token() for _ in range(5)))
+
+        assert all(r == "coalesced-backend-token" for r in results)
+        assert mock_client.post.await_count == 1
+
 
 # ---------------------------------------------------------------------------
 # ClientCredentialsStrategy
@@ -427,7 +626,8 @@ class TestClientCredentialsStrategy:
             )
             await strategy.get_token()
             # Force the cached token to appear expired (past the buffer window).
-            strategy._expires_at = 0.0
+            for entry in strategy._cache._entries.values():
+                entry.expires_at = 0.0
             # Change what the mock will return on the next call so we can distinguish.
             mock_client.post.return_value.json.return_value = {
                 "access_token": "token-2", "expires_in": 3600,
@@ -476,7 +676,9 @@ class TestClientCredentialsStrategy:
         assert first == second == "no-expiry-token"
         # Cache is populated with a non-zero expiry so the second call hits the cache.
         assert mock_client.post.await_count == 1
-        assert strategy._expires_at > 0
+        # Fallback lifetime kicked in: the sole cache entry has a live expires_at.
+        assert all(entry.expires_at > 0 for entry in strategy._cache._entries.values())
+        assert len(strategy._cache._entries) == 1
 
     @pytest.mark.asyncio
     async def test_raises_on_http_error(self):
@@ -577,7 +779,8 @@ class TestClientCredentialsStrategy:
             )
             await strategy.get_token()
             # Force refresh, hit the endpoint again.
-            strategy._expires_at = 0.0
+            for entry in strategy._cache._entries.values():
+                entry.expires_at = 0.0
             await strategy.get_token()
 
         assert mock_cls.call_count <= 1
@@ -1123,3 +1326,247 @@ class TestFactoryLogsSanitizedEndpoint:
         assert provider.token_endpoint == self.RAW_IPV6_ENDPOINT
         assert "endpoint=https://[::1]:8080/oauth/token audience=" in caplog.text
         assert "s3cr3t" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _KeyedTokenCache — shared caching helper used by both token-issuing strategies
+# ---------------------------------------------------------------------------
+
+class TestKeyedTokenCache:
+    """Unit tests for the private _KeyedTokenCache helper.
+
+    The cache stores per-key backend tokens with monotonic-clock expiry, an
+    expiry buffer window, per-key lock coalescing, and bounded LRU eviction.
+    Both ClientCredentialsStrategy and TokenExchangeStrategy delegate their
+    caching to instances of this class.
+    """
+
+    def _import_cache(self):
+        """Import the class lazily so import failure surfaces as a test failure,
+        not a collection error that hides all other tests in the file."""
+        from aas_mcp_server.backend_auth import _KeyedTokenCache  # type: ignore[attr-defined]
+        return _KeyedTokenCache
+
+    @pytest.mark.asyncio
+    async def test_hit_within_lifetime_does_not_refetch(self):
+        """A second get_or_fetch under the same key within the token's lifetime
+        returns the cached token and does not invoke fetch() again."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        calls = 0
+
+        async def fetch():
+            nonlocal calls
+            calls += 1
+            return ("tok", 3600)
+
+        first = await cache.get_or_fetch("k", fetch, label="test")
+        second = await cache.get_or_fetch("k", fetch, label="test")
+
+        assert first == second == "tok"
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_refetches_past_expiry_buffer(self):
+        """Once the cached entry falls inside the expiry buffer window, the next
+        call re-invokes fetch() and returns the new token."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        results = iter([("tok-1", 3600), ("tok-2", 3600)])
+
+        async def fetch():
+            return next(results)
+
+        assert await cache.get_or_fetch("k", fetch, label="test") == "tok-1"
+
+        # Force the cached entry to appear expired.
+        cache._entries["k"].expires_at = 0.0  # type: ignore[attr-defined]
+
+        assert await cache.get_or_fetch("k", fetch, label="test") == "tok-2"
+
+    @pytest.mark.asyncio
+    async def test_expires_in_missing_uses_default_lifetime(self):
+        """When fetch() returns expires_in <= 0, the cache falls back to
+        DEFAULT_TOKEN_LIFETIME_SECONDS so the entry is still reusable."""
+        from aas_mcp_server.backend_auth import DEFAULT_TOKEN_LIFETIME_SECONDS
+
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        calls = 0
+
+        async def fetch():
+            nonlocal calls
+            calls += 1
+            return ("tok", 0)  # sentinel: unknown/invalid expires_in
+
+        await cache.get_or_fetch("k", fetch, label="test")
+        # Second call — must be a cache hit if the fallback lifetime was applied.
+        await cache.get_or_fetch("k", fetch, label="test")
+
+        assert calls == 1
+        entry = cache._entries["k"]  # type: ignore[attr-defined]
+        # The stored expiry is now+fallback (much larger than 0).
+        import time as _time
+        assert entry.expires_at > _time.monotonic() + DEFAULT_TOKEN_LIFETIME_SECONDS - 60
+
+    @pytest.mark.asyncio
+    async def test_distinct_keys_are_isolated(self):
+        """Two keys give two independent entries — never share a cached token."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        fetches: list[str] = []
+
+        async def make_fetch(name):
+            async def fetch():
+                fetches.append(name)
+                return (f"tok-{name}", 3600)
+            return fetch
+
+        assert await cache.get_or_fetch("a", await make_fetch("A"), label="test") == "tok-A"
+        assert await cache.get_or_fetch("b", await make_fetch("B"), label="test") == "tok-B"
+        # Second call for A must return A's token, not B's.
+        assert await cache.get_or_fetch("a", await make_fetch("A"), label="test") == "tok-A"
+
+        assert fetches == ["A", "B"]  # A cached on second call, no refetch
+
+    @pytest.mark.asyncio
+    async def test_concurrent_same_key_coalesces_to_one_fetch(self):
+        """N concurrent get_or_fetch calls for the same key produce exactly one fetch."""
+        import asyncio
+
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        started = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+
+        async def fetch():
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()  # hold the fetch until all callers are queued
+            return ("coalesced", 3600)
+
+        # Launch first — it will start fetching and block on `release`.
+        first = asyncio.create_task(cache.get_or_fetch("k", fetch, label="test"))
+        await started.wait()
+
+        # Now launch 4 more that must wait behind the per-key lock.
+        others = [asyncio.create_task(cache.get_or_fetch("k", fetch, label="test")) for _ in range(4)]
+        # Give the event loop a tick so `others` reach the lock.
+        await asyncio.sleep(0)
+
+        release.set()
+        results = await asyncio.gather(first, *others)
+
+        assert all(r == "coalesced" for r in results)
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_different_keys_do_not_serialise(self):
+        """Fetches for two distinct keys proceed in parallel — neither waits for the other."""
+        import asyncio
+
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        in_flight = 0
+        max_in_flight = 0
+        lock = asyncio.Lock()
+
+        async def fetch_for(name):
+            async def fetch():
+                nonlocal in_flight, max_in_flight
+                async with lock:
+                    in_flight += 1
+                    max_in_flight = max(max_in_flight, in_flight)
+                await asyncio.sleep(0.02)
+                async with lock:
+                    in_flight -= 1
+                return (f"tok-{name}", 3600)
+            return fetch
+
+        a_fetch = await fetch_for("A")
+        b_fetch = await fetch_for("B")
+        await asyncio.gather(
+            cache.get_or_fetch("a", a_fetch, label="test"),
+            cache.get_or_fetch("b", b_fetch, label="test"),
+        )
+
+        assert max_in_flight == 2, (
+            f"Expected two fetches in flight concurrently, saw max={max_in_flight}. "
+            "Per-key locking must not serialise unrelated keys."
+        )
+
+    @pytest.mark.asyncio
+    async def test_evicts_lru_at_capacity(self):
+        """When at max_entries, inserting a new key evicts the least-recently-used one."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache(max_entries=2)
+
+        async def fetch_ok(val):
+            async def fetch():
+                return (val, 3600)
+            return fetch
+
+        await cache.get_or_fetch("a", await fetch_ok("tok-a"), label="test")
+        await cache.get_or_fetch("b", await fetch_ok("tok-b"), label="test")
+        # Insert third — "a" is oldest and should be evicted.
+        await cache.get_or_fetch("c", await fetch_ok("tok-c"), label="test")
+
+        assert "a" not in cache._entries  # type: ignore[attr-defined]
+        assert "b" in cache._entries  # type: ignore[attr-defined]
+        assert "c" in cache._entries  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_access_updates_recency(self):
+        """Reading a cached entry marks it most-recently-used and delays its eviction."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache(max_entries=2)
+
+        async def fetch_ok(val):
+            async def fetch():
+                return (val, 3600)
+            return fetch
+
+        await cache.get_or_fetch("a", await fetch_ok("tok-a"), label="test")
+        await cache.get_or_fetch("b", await fetch_ok("tok-b"), label="test")
+        # Touch "a" — it becomes most-recently-used.
+        await cache.get_or_fetch("a", await fetch_ok("tok-a"), label="test")
+        # Insert "c" — "b" is now oldest and must be evicted instead of "a".
+        await cache.get_or_fetch("c", await fetch_ok("tok-c"), label="test")
+
+        assert "a" in cache._entries  # type: ignore[attr-defined]
+        assert "b" not in cache._entries  # type: ignore[attr-defined]
+        assert "c" in cache._entries  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_fetch_exception_does_not_poison_cache(self):
+        """A fetch() that raises propagates, does not store an entry, and does
+        not block a subsequent successful fetch for the same key."""
+        _KeyedTokenCache = self._import_cache()
+        cache = _KeyedTokenCache()
+
+        attempts = 0
+
+        async def flaky_fetch():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("IdP is grumpy")
+            return ("tok-recovered", 3600)
+
+        with pytest.raises(RuntimeError, match="grumpy"):
+            await cache.get_or_fetch("k", flaky_fetch, label="test")
+
+        # Cache must be clean — no poisoned entry.
+        assert "k" not in cache._entries  # type: ignore[attr-defined]
+
+        # Next call succeeds and populates the cache.
+        assert await cache.get_or_fetch("k", flaky_fetch, label="test") == "tok-recovered"
+        assert "k" in cache._entries  # type: ignore[attr-defined]
