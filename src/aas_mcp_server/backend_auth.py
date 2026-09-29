@@ -14,7 +14,9 @@ the backend accepts. Four strategies are available:
 - TokenExchangeStrategy: performs RFC 8693 token exchange — trades the
   upstream user token for a backend-scoped token. Works when the backend
   expects a token with a specific audience (its own client ID) and the IdP
-  supports token exchange. User identity (sub) is preserved.
+  supports token exchange. User identity (sub) is preserved. Exchanged
+  tokens are cached in-memory per subject so the IdP is not hit on every
+  backend request.
 
 - ClientCredentialsStrategy: performs an OAuth 2.0 client credentials grant
   (RFC 6749 §4.4) — the MCP server authenticates as itself and obtains a
@@ -32,10 +34,13 @@ The strategy is selected by build_backend_token_provider() based on env vars:
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
-from typing import Protocol, runtime_checkable
+from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Awaitable, Callable, Protocol, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -71,6 +76,12 @@ EXPIRY_BUFFER_SECONDS = 30
 # Fallback lifetime when a client_credentials token response omits `expires_in`.
 # Conservative: refresh often rather than reuse a token whose true expiry is unknown.
 DEFAULT_TOKEN_LIFETIME_SECONDS = 300
+
+
+# Default upper bound on the number of cached entries in a _KeyedTokenCache.
+# Sized well above realistic concurrent-user counts on a single MCP server;
+# safety cap only, not a user-facing knob.
+DEFAULT_TOKEN_CACHE_MAX_ENTRIES = 1024
 
 
 def _sanitize_endpoint_for_logging(url: str) -> str:
@@ -111,6 +122,123 @@ class BackendTokenProvider(Protocol):
         ...
 
 
+@dataclass
+class _CacheEntry:
+    """One cached backend token with its monotonic-clock expiry."""
+
+    token: str
+    expires_at: float
+
+
+class _KeyedTokenCache:
+    """In-memory keyed token cache with per-key coalescing and LRU eviction.
+
+    Both TokenExchangeStrategy (keyed per subject) and ClientCredentialsStrategy
+    (single fixed key) delegate their caching here so the timing and locking
+    behaviour cannot drift between them.
+
+    Behaviour:
+
+    - `get_or_fetch(key, fetch, label=...)` returns the cached token for `key`
+      when the monotonic clock has not yet reached
+      `expires_at - EXPIRY_BUFFER_SECONDS`. Otherwise it acquires a per-key
+      lock (creating one on demand), re-checks under the lock, calls `fetch()`,
+      stores the result, and returns the fetched token.
+    - `fetch()` must return `(token, expires_in)`. When `expires_in` is not a
+      positive integer, `DEFAULT_TOKEN_LIFETIME_SECONDS` is used instead.
+      Callers therefore normalise `expires_in` at their layer if the raw IdP
+      response carries anything odd (e.g. a string) — the cache treats any
+      non-positive int the same way.
+    - Concurrent misses under the same key coalesce into one `fetch()` call
+      via the per-key lock; concurrent misses under different keys proceed in
+      parallel.
+    - An exception raised by `fetch()` propagates to the caller that made the
+      call and does NOT store an entry — subsequent callers under the same
+      key will retry independently.
+    - The cache holds at most `max_entries`. Reaching an existing entry
+      (whether cache hit or refresh) marks it most-recently-used. Inserting
+      a new entry when at capacity evicts the least-recently-used entry.
+      Locks for evicted keys are dropped at the same time.
+
+    The class is private to this module. Test code reaches into `_entries` for
+    verification of internal state.
+    """
+
+    def __init__(self, max_entries: int = DEFAULT_TOKEN_CACHE_MAX_ENTRIES) -> None:
+        self._entries: "OrderedDict[str, _CacheEntry]" = OrderedDict()
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._max_entries = max_entries
+
+    def _lock_for(self, key: str) -> asyncio.Lock:
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
+        return lock
+
+    async def get_or_fetch(
+        self,
+        key: str,
+        fetch: Callable[[], Awaitable[tuple[str, int]]],
+        *,
+        label: str,
+    ) -> str:
+        # Fast path: cache hit outside the buffer window. No lock needed —
+        # dict reads are atomic and a concurrent writer only races us to a
+        # newer value, which is still correct to return here.
+        entry = self._entries.get(key)
+        now = time.monotonic()
+        if entry is not None and now < entry.expires_at - EXPIRY_BUFFER_SECONDS:
+            self._entries.move_to_end(key)
+            logger.debug(
+                "%s: reusing cached token (%.0fs until refresh)",
+                label,
+                entry.expires_at - EXPIRY_BUFFER_SECONDS - now,
+            )
+            return entry.token
+
+        # Slow path: fetch under the per-key lock so concurrent misses coalesce.
+        lock = self._lock_for(key)
+        async with lock:
+            # Another coroutine may have populated the entry while we waited.
+            entry = self._entries.get(key)
+            now = time.monotonic()
+            if entry is not None and now < entry.expires_at - EXPIRY_BUFFER_SECONDS:
+                self._entries.move_to_end(key)
+                logger.debug(
+                    "%s: reusing cached token (%.0fs until refresh)",
+                    label,
+                    entry.expires_at - EXPIRY_BUFFER_SECONDS - now,
+                )
+                return entry.token
+
+            logger.debug("%s: fetching new token", label)
+            token, expires_in = await fetch()
+            if not isinstance(expires_in, int) or expires_in <= 0:
+                expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+
+            self._entries[key] = _CacheEntry(
+                token=token,
+                expires_at=time.monotonic() + expires_in,
+            )
+            self._entries.move_to_end(key)
+            self._evict_if_over_capacity()
+
+            logger.debug(
+                "%s: token acquired, length=%d expires_in=%ds",
+                label,
+                len(token),
+                expires_in,
+            )
+            return token
+
+    def _evict_if_over_capacity(self) -> None:
+        """Drop least-recently-used entries (and their locks) until under cap."""
+        while len(self._entries) > self._max_entries:
+            evicted_key, _ = self._entries.popitem(last=False)
+            self._locks.pop(evicted_key, None)
+
+
 class ForwardStrategy:
     """Forward the upstream user token from FastMCP's request context as-is."""
 
@@ -136,6 +264,14 @@ class TokenExchangeStrategy:
     User identity is preserved in the issued token's ``sub`` claim.
     The issued token has ``aud`` matching the backend's client ID so the
     backend accepts it.
+
+    Exchanged tokens are cached in-memory per subject, keyed by a SHA-256
+    hex digest of the upstream access token. Two requests carrying the same
+    upstream token share one cached exchange; two requests carrying different
+    upstream tokens NEVER share a cache entry. The IdP is not hit on every
+    backend request; refreshes happen once a cached entry falls inside the
+    ``EXPIRY_BUFFER_SECONDS`` window. Concurrent requests for the same
+    subject coalesce into a single exchange.
 
     A single ``httpx.AsyncClient`` is created at construction time and reused
     across all calls to avoid connection-churn overhead under load.
@@ -166,6 +302,8 @@ class TokenExchangeStrategy:
         self.scope = scope
         # Shared client — created once, reused per request to avoid connection churn.
         self._http_client = httpx.AsyncClient()
+        # Per-subject cache. Independent from any other strategy's cache.
+        self._cache = _KeyedTokenCache()
 
     async def get_token(self) -> str | None:
         access_token = get_access_token()
@@ -174,6 +312,26 @@ class TokenExchangeStrategy:
             return None
 
         upstream_token = access_token.token
+        # SHA-256 of the raw upstream token is a stable, non-revealing per-subject key.
+        # Storing the hash — not the token itself — keeps the credential out of the
+        # cache-key memory footprint. A rotated upstream token yields a new key and
+        # forces re-exchange, which is what we want: the old exchanged token was
+        # tied to the old subject token's lifetime anyway.
+        cache_key = hashlib.sha256(upstream_token.encode("utf-8")).hexdigest()
+
+        return await self._cache.get_or_fetch(
+            cache_key,
+            lambda: self._exchange(upstream_token),
+            label="TokenExchangeStrategy",
+        )
+
+    async def _exchange(self, upstream_token: str) -> tuple[str, int]:
+        """Perform one RFC 8693 exchange and return (token, expires_in).
+
+        Raises ``RuntimeError`` with an actionable message on any IdP failure
+        or malformed response. Messages are unchanged from the pre-cache
+        version to preserve the existing behavioural contract.
+        """
         data: dict[str, str] = {
             "grant_type": OAUTH_GRANT_TOKEN_EXCHANGE,
             "subject_token": upstream_token,
@@ -227,11 +385,20 @@ class TokenExchangeStrategy:
             )
 
         exchanged_token: str = payload["access_token"]
+        expires_in_raw = payload.get("expires_in")
+        try:
+            expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
+        except (TypeError, ValueError):
+            expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+        if expires_in <= 0:
+            expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+
         logger.debug(
-            "TokenExchangeStrategy: exchange succeeded, token length=%d",
+            "TokenExchangeStrategy: exchange succeeded, token length=%d expires_in=%ds",
             len(exchanged_token),
+            expires_in,
         )
-        return exchanged_token
+        return exchanged_token, expires_in
 
     async def aclose(self) -> None:
         """Close the shared httpx.AsyncClient and release the connection pool.
@@ -258,11 +425,11 @@ class ClientCredentialsStrategy:
     irrelevant, e.g. stdio transport, batch jobs, or backends that trust
     the MCP server's own service identity.
 
-    The issued token is cached in-memory and reused across calls until it
-    is about to expire (``EXPIRY_BUFFER_SECONDS`` before the stated
-    ``expires_in``), so the IdP is not hit on every backend request. An
-    ``asyncio.Lock`` prevents concurrent callers from issuing duplicate
-    fetches during a refresh.
+    The issued token is cached in-memory (via the shared ``_KeyedTokenCache``
+    under a single fixed key) and reused across calls until it is about to
+    expire (``EXPIRY_BUFFER_SECONDS`` before the stated ``expires_in``), so
+    the IdP is not hit on every backend request. The cache coalesces
+    concurrent refreshes into a single fetch.
 
     A single ``httpx.AsyncClient`` is created at construction time and reused.
 
@@ -274,6 +441,10 @@ class ClientCredentialsStrategy:
         audience: Optional audience (some IdPs — Auth0, SAP IAS — require it;
             spec-compliant IdPs treat it as unnecessary).
     """
+
+    # Single-slot cache key — client credentials issues one identity-less token,
+    # so a fixed key is correct.
+    _CACHE_KEY = "__client_credentials__"
 
     def __init__(
         self,
@@ -291,90 +462,82 @@ class ClientCredentialsStrategy:
         self.scope = scope
         self.audience = audience
         self._http_client = httpx.AsyncClient()
-        self._cached_token: str | None = None
-        # Monotonic clock timestamp (seconds) past which the cached token
-        # must be refreshed. 0.0 means "never fetched" — first call will fetch.
-        self._expires_at: float = 0.0
-        self._lock = asyncio.Lock()
+        self._cache = _KeyedTokenCache()
 
     async def get_token(self) -> str | None:
-        async with self._lock:
-            now = time.monotonic()
-            if self._cached_token is not None and now < self._expires_at - EXPIRY_BUFFER_SECONDS:
-                logger.debug(
-                    "ClientCredentialsStrategy: reusing cached token (%.0fs until refresh)",
-                    self._expires_at - EXPIRY_BUFFER_SECONDS - now,
-                )
-                return self._cached_token
+        return await self._cache.get_or_fetch(
+            self._CACHE_KEY,
+            self._fetch_token,
+            label="ClientCredentialsStrategy",
+        )
 
-            data: dict[str, str] = {"grant_type": OAUTH_GRANT_CLIENT_CREDENTIALS}
-            if self.scope:
-                data["scope"] = self.scope
-            if self.audience:
-                data["audience"] = self.audience
+    async def _fetch_token(self) -> tuple[str, int]:
+        """Perform the client-credentials token request and return (token, expires_in).
 
-            logger.debug(
-                "ClientCredentialsStrategy: fetching new token at %s scope=%s audience=%s",
-                self._safe_endpoint,
-                self.scope or "<not set>",
-                self.audience or "<not set>",
+        Raises ``RuntimeError`` with an actionable message on any IdP failure
+        or malformed response. Messages are unchanged from the pre-cache
+        version to preserve the existing behavioural contract.
+        """
+        data: dict[str, str] = {"grant_type": OAUTH_GRANT_CLIENT_CREDENTIALS}
+        if self.scope:
+            data["scope"] = self.scope
+        if self.audience:
+            data["audience"] = self.audience
+
+        logger.debug(
+            "ClientCredentialsStrategy: fetching new token at %s scope=%s audience=%s",
+            self._safe_endpoint,
+            self.scope or "<not set>",
+            self.audience or "<not set>",
+        )
+
+        try:
+            response = await self._http_client.post(
+                self.token_endpoint,
+                data=data,
+                auth=(self.client_id, self.client_secret),
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(
+                f"Backend client_credentials token request failed at {self._safe_endpoint}: "
+                f"HTTP {exc.response.status_code}. "
+                f"Check BACKEND_AUTH_CLIENT_ID, BACKEND_AUTH_CLIENT_SECRET, and that the IdP "
+                f"is configured to allow the client_credentials grant for this client."
+            ) from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"Backend client_credentials token request failed: {exc}. "
+                f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
+            ) from exc
+
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Backend client_credentials token request at {self._safe_endpoint} returned "
+                f"a non-JSON response (content-type: "
+                f"{response.headers.get('content-type', '<unknown>')}). "
+                f"Expected an OAuth 2.0 token response with 'access_token'."
+            ) from exc
+
+        if "access_token" not in payload:
+            raise RuntimeError(
+                f"Backend client_credentials token request at {self._safe_endpoint} succeeded "
+                f"(HTTP 200) but the response is missing the 'access_token' field. "
+                f"Check that the IdP is returning a valid OAuth 2.0 token response."
             )
 
-            try:
-                response = await self._http_client.post(
-                    self.token_endpoint,
-                    data=data,
-                    auth=(self.client_id, self.client_secret),
-                )
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                raise RuntimeError(
-                    f"Backend client_credentials token request failed at {self._safe_endpoint}: "
-                    f"HTTP {exc.response.status_code}. "
-                    f"Check BACKEND_AUTH_CLIENT_ID, BACKEND_AUTH_CLIENT_SECRET, and that the IdP "
-                    f"is configured to allow the client_credentials grant for this client."
-                ) from exc
-            except httpx.RequestError as exc:
-                raise RuntimeError(
-                    f"Backend client_credentials token request failed: {exc}. "
-                    f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
-                ) from exc
+        access_token: str = payload["access_token"]
+        expires_in_raw = payload.get("expires_in")
+        try:
+            expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
+        except (TypeError, ValueError):
+            expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
+        if expires_in <= 0:
+            expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
 
-            try:
-                payload = response.json()
-            except Exception as exc:
-                raise RuntimeError(
-                    f"Backend client_credentials token request at {self._safe_endpoint} returned "
-                    f"a non-JSON response (content-type: "
-                    f"{response.headers.get('content-type', '<unknown>')}). "
-                    f"Expected an OAuth 2.0 token response with 'access_token'."
-                ) from exc
-
-            if "access_token" not in payload:
-                raise RuntimeError(
-                    f"Backend client_credentials token request at {self._safe_endpoint} succeeded "
-                    f"(HTTP 200) but the response is missing the 'access_token' field. "
-                    f"Check that the IdP is returning a valid OAuth 2.0 token response."
-                )
-
-            access_token: str = payload["access_token"]
-            expires_in_raw = payload.get("expires_in")
-            try:
-                expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
-            except (TypeError, ValueError):
-                expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
-            if expires_in <= 0:
-                expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
-
-            self._cached_token = access_token
-            self._expires_at = time.monotonic() + expires_in
-
-            logger.debug(
-                "ClientCredentialsStrategy: token acquired, length=%d expires_in=%ds",
-                len(access_token),
-                expires_in,
-            )
-            return access_token
+        return access_token, expires_in
 
     async def aclose(self) -> None:
         """Close the shared httpx.AsyncClient and release the connection pool."""

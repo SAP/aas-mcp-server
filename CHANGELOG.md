@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Per-subject in-memory token caching in `TokenExchangeStrategy`: exchanged tokens are reused across backend requests for the same upstream user until near expiry, eliminating the per-request IdP round-trip. Concurrent requests for the same subject coalesce into a single exchange. Cache keys are the SHA-256 digest of the upstream token, so a rotated upstream token correctly forces re-exchange and different users never share a cache entry. ([#40](https://github.com/SAP/aas-mcp-server/issues/40))
+
+### Changed
+
+- Internal refactor: `ClientCredentialsStrategy` and `TokenExchangeStrategy` now share a common private `_KeyedTokenCache` helper (LRU-bounded, per-key coalescing lock, monotonic-clock expiry with `EXPIRY_BUFFER_SECONDS` buffer). No public API or configuration change. `ClientCredentialsStrategy`'s externally observable caching behaviour is unchanged.
+
 ## [0.1.0](https://github.com/SAP/aas-mcp-server/releases/tag/v0.1.0) (2026-07-29)
 
 First public release of `aas-mcp-server` — an OpenAPI-to-MCP bridge that exposes Asset Administration Shell (AAS) APIs as Model Context Protocol tools so LLM agents can interact with any AAS-compliant backend.
