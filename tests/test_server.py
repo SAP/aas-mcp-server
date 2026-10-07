@@ -21,7 +21,12 @@ from aas_mcp_server.server import (
     build_auth_provider,
     _build_session_store,
 )
-from aas_mcp_server.constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT, ENV_OAUTH_SESSION_STORE_URL
+from aas_mcp_server.constants import (
+    DEFAULT_LOG_LEVEL,
+    SERVER_NAME_FORMAT,
+    ENV_OAUTH_SESSION_STORE_URL,
+    OAUTH_SCOPE_OPENID,
+)
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from aas_mcp_server.config import ComponentConfig
 
@@ -909,12 +914,12 @@ class TestOpenidScopeAlwaysIncluded:
         provider = build_auth_provider("127.0.0.1", 8000)
         assert provider is not None
         # _default_scope_str is what synthesized/registered clients get as their `scope`.
-        assert "openid" in provider._default_scope_str.split()
+        assert OAUTH_SCOPE_OPENID in provider._default_scope_str.split()
         # client_registration_options must also allow openid so DCR requests succeed.
         reg_opts = provider.client_registration_options
         assert reg_opts is not None
         assert reg_opts.valid_scopes is not None
-        assert "openid" in reg_opts.valid_scopes
+        assert OAUTH_SCOPE_OPENID in reg_opts.valid_scopes
 
 
 @patch(
