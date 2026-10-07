@@ -313,7 +313,7 @@ def build_auth_provider(
         "scope": " ".join(dict.fromkeys(["openid", *(required_scopes or [])]))
     }
 
-    return OIDCProxy(
+    proxy = OIDCProxy(
         config_url=config_url,
         client_id=client_id,
         client_secret=client_secret,
@@ -328,6 +328,18 @@ def build_auth_provider(
         client_storage=client_storage,
         extra_authorize_params=extra_authorize_params,
     )
+
+    # Register "openid" (and any operator-configured scopes) as valid scopes on the
+    # proxy's local DCR layer. The MCP SDK's RegisteredClient.validate_scope() rejects
+    # any scope not present on the stored client — including DCR-registered clients
+    # and the synthesized client we return when a request uses the upstream client_id
+    # directly. Without this, MCP clients calling /authorize?scope=openid get an
+    # "invalid_scope: Client was not registered with scope openid" error from the
+    # proxy itself (before the request ever reaches the upstream IdP).
+    _advertised_scopes = list(dict.fromkeys(["openid", *(required_scopes or [])]))
+    proxy.update_default_scopes(_advertised_scopes)
+
+    return proxy
 
 
 def build_mcp_server(
