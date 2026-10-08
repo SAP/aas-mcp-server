@@ -12,6 +12,7 @@ from copy import deepcopy
 from aas_mcp_server.tool_curation import (
     curate_openapi_spec,
     _cap_limit_parameter,
+    _cap_limit_in_parameter_list,
     DEFAULT_ALLOWLIST,
     OPERATION_ID_ALIASES,
 )
@@ -428,6 +429,25 @@ class TestCapLimitParameter:
             result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
             == 50
         )
+
+
+class TestCapLimitInParameterList:
+    """Tests for the shared `_cap_limit_in_parameter_list` helper."""
+
+    def test_returns_empty_list_for_none(self):
+        assert _cap_limit_in_parameter_list(None, max_limit=50) == []
+
+    def test_returns_empty_list_for_empty_list(self):
+        assert _cap_limit_in_parameter_list([], max_limit=50) == []
+
+    def test_returns_empty_list_for_non_list_input(self):
+        """Defensive contract: non-list input yields an empty list, no raise."""
+        # A spec that mis-declares `parameters` must not crash curation. The
+        # OpenAPI schema requires a list, but the curator is a safety layer:
+        # it should fall back gracefully rather than propagate TypeError.
+        assert _cap_limit_in_parameter_list({"name": "x"}, max_limit=50) == []
+        assert _cap_limit_in_parameter_list("not-a-list", max_limit=50) == []
+        assert _cap_limit_in_parameter_list(42, max_limit=50) == []
 
 
 class TestConstants:

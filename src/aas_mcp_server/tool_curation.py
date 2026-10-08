@@ -207,7 +207,9 @@ def _cap_limit_in_parameter_list(params: Any, max_limit: int) -> list:
     is no inline ``maximum`` to cap.
     """
     new_params: list = []
-    for p in params or []:
+    if not isinstance(params, list):
+        return new_params
+    for p in params:
         p2 = dict(p)
         schema = p2.get(OPENAPI_KEY_SCHEMA)
         if isinstance(schema, dict) and p2.get(OPENAPI_KEY_NAME) in {
