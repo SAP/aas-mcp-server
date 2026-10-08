@@ -12,6 +12,7 @@ from copy import deepcopy
 from aas_mcp_server.tool_curation import (
     curate_openapi_spec,
     _cap_limit_parameter,
+    _cap_limit_in_parameter_list,
     DEFAULT_ALLOWLIST,
     OPERATION_ID_ALIASES,
 )
@@ -193,6 +194,134 @@ class TestCurateOpenApiSpec:
 
         assert result[OPENAPI_KEY_PATHS] == {}
 
+    def test_preserves_path_level_parameters(self):
+        """Regression test for #83: path-item-level parameters survive curation.
+
+        OpenAPI allows shared parameters to be declared once at the path-item
+        level; all operations under that path inherit them. The official AAS
+        V3.2 spec uses this pattern for ``aasIdentifier``. If curation drops
+        these parameters, FastMCP generates a tool with no input field for
+        the path variable and the endpoint cannot be called.
+        """
+        path_param = {
+            OPENAPI_KEY_NAME: "aasIdentifier",
+            "in": "path",
+            "required": True,
+            OPENAPI_KEY_SCHEMA: {"type": "string"},
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells/{aasIdentifier}": {
+                    OPENAPI_KEY_PARAMETERS: [path_param],
+                    HTTP_METHOD_GET: {
+                        OPENAPI_KEY_OPERATION_ID: "GetAssetAdministrationShellById",
+                    },
+                }
+            }
+        }
+
+        result = curate_openapi_spec(
+            spec,
+            enable_writes=False,
+            curation_settings={
+                "allowlist": [[HTTP_METHOD_GET, "/shells/{aasIdentifier}"]],
+            },
+        )
+
+        curated_path = result[OPENAPI_KEY_PATHS]["/shells/{aasIdentifier}"]
+        assert OPENAPI_KEY_PARAMETERS in curated_path, (
+            "path-level parameters must be preserved so inherited path "
+            "variables remain available to tool generation (issue #83)"
+        )
+        assert curated_path[OPENAPI_KEY_PARAMETERS] == [path_param]
+
+    def test_preserves_path_level_parameters_with_ref(self):
+        """Path-level parameters using $ref must be preserved as-is.
+
+        The official AAS V3.2 spec references ``aasIdentifier`` via
+        ``$ref: '#/components/parameters/AssetAdministrationShellIdentifier'``.
+        Dropping or inlining the $ref would break FastMCP's resolver and
+        the schema-pruning step which traces reachability through $refs.
+        """
+        param_ref = {
+            "$ref": "#/components/parameters/AssetAdministrationShellIdentifier"
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells/{aasIdentifier}": {
+                    OPENAPI_KEY_PARAMETERS: [param_ref],
+                    HTTP_METHOD_GET: {
+                        OPENAPI_KEY_OPERATION_ID: "GetAssetAdministrationShellById",
+                    },
+                    HTTP_METHOD_DELETE: {
+                        OPENAPI_KEY_OPERATION_ID: "DeleteAssetAdministrationShellById",
+                    },
+                }
+            }
+        }
+
+        result = curate_openapi_spec(
+            spec,
+            enable_writes=True,
+            curation_settings={
+                "allowlist": [
+                    [HTTP_METHOD_GET, "/shells/{aasIdentifier}"],
+                    [HTTP_METHOD_DELETE, "/shells/{aasIdentifier}"],
+                ],
+            },
+        )
+
+        curated_path = result[OPENAPI_KEY_PATHS]["/shells/{aasIdentifier}"]
+        assert curated_path.get(OPENAPI_KEY_PARAMETERS) == [param_ref]
+        # Both inheriting operations must still be present.
+        assert HTTP_METHOD_GET in curated_path
+        assert HTTP_METHOD_DELETE in curated_path
+
+    def test_does_not_add_empty_path_level_parameters(self):
+        """Paths without path-level parameters stay clean (no stray key)."""
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells": {
+                    HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "getShells"},
+                }
+            }
+        }
+
+        result = curate_openapi_spec(spec, enable_writes=False)
+
+        assert OPENAPI_KEY_PARAMETERS not in result[OPENAPI_KEY_PATHS]["/shells"]
+
+    def test_caps_shared_limit_parameter_at_path_level(self):
+        """Shared `limit` at path-item level must be capped like operation-level.
+
+        OpenAPI lets query parameters be declared once at the path-item level
+        and inherited by every operation. The curator caps `limit` on
+        operations as a defensive guard against excessive pagination; the
+        same cap must apply to a shared path-level `limit`, otherwise an
+        operation inheriting it bypasses the safety transformation.
+        """
+        shared_limit = {
+            OPENAPI_KEY_NAME: PARAM_NAME_LIMIT,
+            "in": "query",
+            OPENAPI_KEY_SCHEMA: {"type": "integer", "maximum": 1000},
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells": {
+                    OPENAPI_KEY_PARAMETERS: [shared_limit],
+                    HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "getShells"},
+                }
+            }
+        }
+
+        result = curate_openapi_spec(spec, enable_writes=False)
+
+        curated_params = result[OPENAPI_KEY_PATHS]["/shells"][OPENAPI_KEY_PARAMETERS]
+        assert (
+            curated_params[0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == DEFAULT_MAX_LIMIT
+        )
+
 
 class TestCapLimitParameter:
     """Tests for _cap_limit_parameter helper function."""
@@ -300,6 +429,25 @@ class TestCapLimitParameter:
             result[OPENAPI_KEY_PARAMETERS][0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
             == 50
         )
+
+
+class TestCapLimitInParameterList:
+    """Tests for the shared `_cap_limit_in_parameter_list` helper."""
+
+    def test_returns_empty_list_for_none(self):
+        assert _cap_limit_in_parameter_list(None, max_limit=50) == []
+
+    def test_returns_empty_list_for_empty_list(self):
+        assert _cap_limit_in_parameter_list([], max_limit=50) == []
+
+    def test_returns_empty_list_for_non_list_input(self):
+        """Defensive contract: non-list input yields an empty list, no raise."""
+        # A spec that mis-declares `parameters` must not crash curation. The
+        # OpenAPI schema requires a list, but the curator is a safety layer:
+        # it should fall back gracefully rather than propagate TypeError.
+        assert _cap_limit_in_parameter_list({"name": "x"}, max_limit=50) == []
+        assert _cap_limit_in_parameter_list("not-a-list", max_limit=50) == []
+        assert _cap_limit_in_parameter_list(42, max_limit=50) == []
 
 
 class TestConstants:
