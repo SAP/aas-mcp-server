@@ -182,12 +182,43 @@ def curate_openapi_spec(
             # operations under a path item inherit these parameters; dropping
             # them removes shared path/query variables such as `aasIdentifier`
             # from the generated tool inputs (issue #83).
+            #
+            # A shared `limit` at this level inherits the same defensive cap
+            # as operation-level `limit` so inheriting operations cannot
+            # bypass pagination safety.
             if isinstance(path_item, dict) and path_item.get(OPENAPI_KEY_PARAMETERS):
-                new_item[OPENAPI_KEY_PARAMETERS] = path_item[OPENAPI_KEY_PARAMETERS]
+                new_item[OPENAPI_KEY_PARAMETERS] = _cap_limit_in_parameter_list(
+                    path_item[OPENAPI_KEY_PARAMETERS],
+                    max_limit=DEFAULT_MAX_LIMIT,
+                )
             new_paths[path] = new_item
 
     out[OPENAPI_KEY_PATHS] = new_paths
     return out
+
+
+def _cap_limit_in_parameter_list(params: Any, max_limit: int) -> list:
+    """
+    Return a new parameter list with any `limit` entry's schema.maximum capped.
+
+    Non-`limit` entries are shallow-copied through unchanged. Non-list input
+    (e.g. ``None``) yields an empty list. Entries without an inline schema
+    (``$ref`` form, or missing ``schema``) are left untouched because there
+    is no inline ``maximum`` to cap.
+    """
+    new_params: list = []
+    for p in params or []:
+        p2 = dict(p)
+        schema = p2.get(OPENAPI_KEY_SCHEMA)
+        if isinstance(schema, dict) and p2.get(OPENAPI_KEY_NAME) in {
+            PARAM_NAME_LIMIT,
+            PARAM_NAME_LIMIT_CAPITALIZED,
+        }:
+            schema = dict(schema)
+            schema[OPENAPI_KEY_MAXIMUM] = max_limit
+            p2[OPENAPI_KEY_SCHEMA] = schema
+        new_params.append(p2)
+    return new_params
 
 
 def _cap_limit_parameter(op: Dict[str, Any], max_limit: int) -> Dict[str, Any]:
@@ -201,20 +232,9 @@ def _cap_limit_parameter(op: Dict[str, Any], max_limit: int) -> Dict[str, Any]:
     Returns:
         Operation with capped limit parameters
     """
-    params = op.get(OPENAPI_KEY_PARAMETERS) or []
-    new_params = []
-    for p in params:
-        p2 = dict(p)
-        schema = p2.get(OPENAPI_KEY_SCHEMA)
-        if isinstance(schema, dict) and p2.get(OPENAPI_KEY_NAME) in {
-            PARAM_NAME_LIMIT,
-            PARAM_NAME_LIMIT_CAPITALIZED,
-        }:
-            schema = dict(schema)
-            schema[OPENAPI_KEY_MAXIMUM] = max_limit
-            p2[OPENAPI_KEY_SCHEMA] = schema
-        new_params.append(p2)
-    op[OPENAPI_KEY_PARAMETERS] = new_params
+    op[OPENAPI_KEY_PARAMETERS] = _cap_limit_in_parameter_list(
+        op.get(OPENAPI_KEY_PARAMETERS), max_limit=max_limit
+    )
     return op
 
 

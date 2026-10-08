@@ -290,6 +290,37 @@ class TestCurateOpenApiSpec:
 
         assert OPENAPI_KEY_PARAMETERS not in result[OPENAPI_KEY_PATHS]["/shells"]
 
+    def test_caps_shared_limit_parameter_at_path_level(self):
+        """Shared `limit` at path-item level must be capped like operation-level.
+
+        OpenAPI lets query parameters be declared once at the path-item level
+        and inherited by every operation. The curator caps `limit` on
+        operations as a defensive guard against excessive pagination; the
+        same cap must apply to a shared path-level `limit`, otherwise an
+        operation inheriting it bypasses the safety transformation.
+        """
+        shared_limit = {
+            OPENAPI_KEY_NAME: PARAM_NAME_LIMIT,
+            "in": "query",
+            OPENAPI_KEY_SCHEMA: {"type": "integer", "maximum": 1000},
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells": {
+                    OPENAPI_KEY_PARAMETERS: [shared_limit],
+                    HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "getShells"},
+                }
+            }
+        }
+
+        result = curate_openapi_spec(spec, enable_writes=False)
+
+        curated_params = result[OPENAPI_KEY_PATHS]["/shells"][OPENAPI_KEY_PARAMETERS]
+        assert (
+            curated_params[0][OPENAPI_KEY_SCHEMA][OPENAPI_KEY_MAXIMUM]
+            == DEFAULT_MAX_LIMIT
+        )
+
 
 class TestCapLimitParameter:
     """Tests for _cap_limit_parameter helper function."""
