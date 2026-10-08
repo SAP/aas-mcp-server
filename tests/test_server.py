@@ -21,7 +21,12 @@ from aas_mcp_server.server import (
     build_auth_provider,
     _build_session_store,
 )
-from aas_mcp_server.constants import DEFAULT_LOG_LEVEL, SERVER_NAME_FORMAT, ENV_OAUTH_SESSION_STORE_URL
+from aas_mcp_server.constants import (
+    DEFAULT_LOG_LEVEL,
+    SERVER_NAME_FORMAT,
+    ENV_OAUTH_SESSION_STORE_URL,
+    OAUTH_SCOPE_OPENID,
+)
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from aas_mcp_server.config import ComponentConfig
 
@@ -894,6 +899,25 @@ class TestOpenidScopeAlwaysIncluded:
         """openid already in OAUTH_REQUIRED_SCOPES — no duplicate in scope string."""
         provider = build_auth_provider("127.0.0.1", 8000)
         assert provider is not None
+
+    def test_openid_registered_as_valid_dcr_scope(self, _mock_get):
+        """MCP SDK's RegisteredClient.validate_scope() rejects any scope not stored on the client.
+
+        The proxy's local DCR layer must know 'openid' is a valid scope so that:
+          1. clients registered via DCR get scope="openid ..." stored on them, and
+          2. the synthesized client (used when a request supplies the upstream
+             client_id directly) also carries 'openid' as a valid scope.
+
+        Otherwise /authorize?scope=openid returns invalid_scope BEFORE reaching the
+        upstream IdP. Regression test for the Joule Desktop auth flow.
+        """
+        provider = build_auth_provider("127.0.0.1", 8000)
+        assert provider is not None
+        # client_registration_options must also allow openid so DCR requests succeed.
+        reg_opts = provider.client_registration_options
+        assert reg_opts is not None
+        assert reg_opts.valid_scopes is not None
+        assert OAUTH_SCOPE_OPENID in reg_opts.valid_scopes
 
 
 @patch(

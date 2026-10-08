@@ -68,6 +68,7 @@ from .constants import (
     ENV_OAUTH_SERVER_BASE_URL,
     ENV_OAUTH_SESSION_STORE_URL,
     ENV_MCP_RATE_LIMIT_PER_MINUTE,
+    OAUTH_SCOPE_OPENID,
 )
 
 logger = logging.getLogger(__name__)
@@ -310,10 +311,10 @@ def build_auth_provider(
     # Always send "openid" so the IdP returns an id_token / OIDC identity claims.
     # Append any operator-configured scopes after it, deduplicated.
     extra_authorize_params: dict[str, str] = {
-        "scope": " ".join(dict.fromkeys(["openid", *(required_scopes or [])]))
+        "scope": " ".join(dict.fromkeys([OAUTH_SCOPE_OPENID, *(required_scopes or [])]))
     }
 
-    return OIDCProxy(
+    proxy = OIDCProxy(
         config_url=config_url,
         client_id=client_id,
         client_secret=client_secret,
@@ -328,6 +329,18 @@ def build_auth_provider(
         client_storage=client_storage,
         extra_authorize_params=extra_authorize_params,
     )
+
+    # Register "openid" (and any operator-configured scopes) as valid scopes on the
+    # proxy's local DCR layer. The MCP SDK's RegisteredClient.validate_scope() rejects
+    # any scope not present on the stored client — including DCR-registered clients
+    # and the synthesized client we return when a request uses the upstream client_id
+    # directly. Without this, MCP clients calling /authorize?scope=openid get an
+    # "invalid_scope: Client was not registered with scope openid" error from the
+    # proxy itself (before the request ever reaches the upstream IdP).
+    _advertised_scopes = list(dict.fromkeys([OAUTH_SCOPE_OPENID, *(required_scopes or [])]))
+    proxy.update_default_scopes(_advertised_scopes)
+
+    return proxy
 
 
 def build_mcp_server(

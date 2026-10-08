@@ -106,6 +106,7 @@ VALID_BACKEND_STRATEGIES = frozenset({
 OAUTH_GRANT_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
 OAUTH_GRANT_CLIENT_CREDENTIALS = "client_credentials"
 OAUTH_TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
+OAUTH_SCOPE_OPENID = "openid"
 
 # ============================================================================
 # Server Configuration
