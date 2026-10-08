@@ -178,6 +178,12 @@ def curate_openapi_spec(
             new_item[m] = op
 
         if new_item:
+            # Preserve path-item-level `parameters` (OpenAPI 3.x). All
+            # operations under a path item inherit these parameters; dropping
+            # them removes shared path/query variables such as `aasIdentifier`
+            # from the generated tool inputs (issue #83).
+            if isinstance(path_item, dict) and path_item.get(OPENAPI_KEY_PARAMETERS):
+                new_item[OPENAPI_KEY_PARAMETERS] = path_item[OPENAPI_KEY_PARAMETERS]
             new_paths[path] = new_item
 
     out[OPENAPI_KEY_PATHS] = new_paths

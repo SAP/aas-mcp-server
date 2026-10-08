@@ -193,6 +193,103 @@ class TestCurateOpenApiSpec:
 
         assert result[OPENAPI_KEY_PATHS] == {}
 
+    def test_preserves_path_level_parameters(self):
+        """Regression test for #83: path-item-level parameters survive curation.
+
+        OpenAPI allows shared parameters to be declared once at the path-item
+        level; all operations under that path inherit them. The official AAS
+        V3.2 spec uses this pattern for ``aasIdentifier``. If curation drops
+        these parameters, FastMCP generates a tool with no input field for
+        the path variable and the endpoint cannot be called.
+        """
+        path_param = {
+            OPENAPI_KEY_NAME: "aasIdentifier",
+            "in": "path",
+            "required": True,
+            OPENAPI_KEY_SCHEMA: {"type": "string"},
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells/{aasIdentifier}": {
+                    OPENAPI_KEY_PARAMETERS: [path_param],
+                    HTTP_METHOD_GET: {
+                        OPENAPI_KEY_OPERATION_ID: "GetAssetAdministrationShellById",
+                    },
+                }
+            }
+        }
+
+        result = curate_openapi_spec(
+            spec,
+            enable_writes=False,
+            curation_settings={
+                "allowlist": [[HTTP_METHOD_GET, "/shells/{aasIdentifier}"]],
+            },
+        )
+
+        curated_path = result[OPENAPI_KEY_PATHS]["/shells/{aasIdentifier}"]
+        assert OPENAPI_KEY_PARAMETERS in curated_path, (
+            "path-level parameters must be preserved so inherited path "
+            "variables remain available to tool generation (issue #83)"
+        )
+        assert curated_path[OPENAPI_KEY_PARAMETERS] == [path_param]
+
+    def test_preserves_path_level_parameters_with_ref(self):
+        """Path-level parameters using $ref must be preserved as-is.
+
+        The official AAS V3.2 spec references ``aasIdentifier`` via
+        ``$ref: '#/components/parameters/AssetAdministrationShellIdentifier'``.
+        Dropping or inlining the $ref would break FastMCP's resolver and
+        the schema-pruning step which traces reachability through $refs.
+        """
+        param_ref = {
+            "$ref": "#/components/parameters/AssetAdministrationShellIdentifier"
+        }
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells/{aasIdentifier}": {
+                    OPENAPI_KEY_PARAMETERS: [param_ref],
+                    HTTP_METHOD_GET: {
+                        OPENAPI_KEY_OPERATION_ID: "GetAssetAdministrationShellById",
+                    },
+                    HTTP_METHOD_DELETE: {
+                        OPENAPI_KEY_OPERATION_ID: "DeleteAssetAdministrationShellById",
+                    },
+                }
+            }
+        }
+
+        result = curate_openapi_spec(
+            spec,
+            enable_writes=True,
+            curation_settings={
+                "allowlist": [
+                    [HTTP_METHOD_GET, "/shells/{aasIdentifier}"],
+                    [HTTP_METHOD_DELETE, "/shells/{aasIdentifier}"],
+                ],
+            },
+        )
+
+        curated_path = result[OPENAPI_KEY_PATHS]["/shells/{aasIdentifier}"]
+        assert curated_path.get(OPENAPI_KEY_PARAMETERS) == [param_ref]
+        # Both inheriting operations must still be present.
+        assert HTTP_METHOD_GET in curated_path
+        assert HTTP_METHOD_DELETE in curated_path
+
+    def test_does_not_add_empty_path_level_parameters(self):
+        """Paths without path-level parameters stay clean (no stray key)."""
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/shells": {
+                    HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "getShells"},
+                }
+            }
+        }
+
+        result = curate_openapi_spec(spec, enable_writes=False)
+
+        assert OPENAPI_KEY_PARAMETERS not in result[OPENAPI_KEY_PATHS]["/shells"]
+
 
 class TestCapLimitParameter:
     """Tests for _cap_limit_parameter helper function."""
