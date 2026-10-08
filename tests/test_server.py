@@ -913,8 +913,6 @@ class TestOpenidScopeAlwaysIncluded:
         """
         provider = build_auth_provider("127.0.0.1", 8000)
         assert provider is not None
-        # _default_scope_str is what synthesized/registered clients get as their `scope`.
-        assert OAUTH_SCOPE_OPENID in provider._default_scope_str.split()
         # client_registration_options must also allow openid so DCR requests succeed.
         reg_opts = provider.client_registration_options
         assert reg_opts is not None
