@@ -437,7 +437,7 @@ def build_mcp_server(
     # traces, AAS backend URLs, internal hostnames) from leaking to MCP clients.
     #
     # lifespan: closes the backend token provider's connection pool on shutdown.
-    # Only TokenExchangeStrategy holds a long-lived httpx.AsyncClient that needs
+    # Only TokenExchangeStrategy holds a long-lived httpx2.AsyncClient that needs
     # explicit cleanup; ForwardStrategy and NoneStrategy are stateless.
     mcp = FastMCP.from_openapi(
         openapi_spec=curated,
