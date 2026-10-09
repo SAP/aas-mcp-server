@@ -9,4 +9,4 @@ LLMs to AAS backend services through OpenAPI specifications.
 """
 
 __all__ = ["__version__"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
