@@ -179,6 +179,29 @@ class TestTokenExchangeStrategy:
                 await strategy.get_token()
 
     @pytest.mark.asyncio
+    async def test_raises_on_network_error(self):
+        """A network / connection failure raises RuntimeError pointing at the endpoint."""
+        import httpx2 as _httpx
+
+        mock_upstream = MagicMock()
+        mock_upstream.token = "user-token"
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=_httpx.RequestError("connection refused"))
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
+             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+            strategy = TokenExchangeStrategy(
+                token_endpoint="https://idp.example.com/oauth/token",
+                client_id="mcp-client-id",
+                client_secret="mcp-secret",
+                audience="backend-client-id",
+                scope=None,
+            )
+            with pytest.raises(RuntimeError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+                await strategy.get_token()
+
+    @pytest.mark.asyncio
     async def test_raises_on_missing_access_token_in_response(self):
         """TokenExchangeStrategy raises RuntimeError when response has no access_token field."""
         mock_upstream = MagicMock()
