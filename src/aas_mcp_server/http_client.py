@@ -4,7 +4,7 @@
 """
 HTTP client configuration for AAS MCP Server.
 
-Authentication uses a custom httpx.AsyncAuth subclass (BearerTokenAuth) that
+Authentication uses a custom httpx2.AsyncAuth subclass (BearerTokenAuth) that
 delegates to a BackendTokenProvider to obtain the token for every outbound
 request. This supports multiple strategies:
 
@@ -25,7 +25,7 @@ import os
 from typing import AsyncGenerator
 from urllib.parse import urlparse
 
-import httpx
+import httpx2
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +139,15 @@ def validate_backend_url(url: str) -> None:
             raise  # re-raise our own errors, not ipaddress parse errors
 
 
-class BearerTokenAuth(httpx.Auth):
+class BearerTokenAuth(httpx2.Auth):
     """
-    httpx.Auth implementation that obtains a bearer token via a
+    httpx2.Auth implementation that obtains a bearer token via a
     BackendTokenProvider and injects it into every outbound AAS backend call.
 
     The provider is called at request time so each tool invocation uses the
     token appropriate for that specific MCP session / strategy.
 
-    Overrides async_auth_flow (used by httpx.AsyncClient) to avoid bridging
+    Overrides async_auth_flow (used by httpx2.AsyncClient) to avoid bridging
     async/sync contexts — the server runs inside an asyncio event loop and
     calling run_until_complete() from within a running loop raises RuntimeError.
 
@@ -160,8 +160,8 @@ class BearerTokenAuth(httpx.Auth):
         self._provider: BackendTokenProvider = provider if provider is not None else ForwardStrategy()
 
     async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
         token_str = await self._provider.get_token()
         if token_str is not None:
             logger.debug(
@@ -181,7 +181,7 @@ class BearerTokenAuth(httpx.Auth):
 def build_async_client(
     base_url: str,
     backend_token_provider: BackendTokenProvider | None = None,
-) -> httpx.AsyncClient:
+) -> httpx2.AsyncClient:
     """
     Build an async HTTP client configured with the given backend token strategy.
 
@@ -193,7 +193,7 @@ def build_async_client(
                                  ForwardStrategy (forward upstream token as-is).
 
     Returns:
-        Configured httpx.AsyncClient instance
+        Configured httpx2.AsyncClient instance
 
     Raises:
         ValueError: If base_url fails security validation or AAS_HTTP_TIMEOUT
@@ -215,7 +215,7 @@ def build_async_client(
             f"Value must be a positive finite number in seconds (default: {DEFAULT_HTTP_TIMEOUT})."
         )
 
-    return httpx.AsyncClient(
+    return httpx2.AsyncClient(
         base_url=base_url,
         headers={HEADER_ACCEPT: CONTENT_TYPE_JSON},
         auth=BearerTokenAuth(provider=backend_token_provider),
