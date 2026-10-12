@@ -4,7 +4,7 @@
 """
 HTTP client configuration for AAS MCP Server.
 
-Authentication uses a custom httpx2.AsyncAuth subclass (BearerTokenAuth) that
+Authentication uses a custom httpx2.Auth subclass (BearerTokenAuth) that
 delegates to a BackendTokenProvider to obtain the token for every outbound
 request. This supports multiple strategies:
 
