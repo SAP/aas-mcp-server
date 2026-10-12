@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2
 import pytest
 from fastmcp.server.auth import OIDCProxy
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
@@ -44,7 +44,7 @@ TEST_CLIENT_ID = "test-client-id"
 TEST_CLIENT_SECRET = "test-client-secret"
 TEST_AUDIENCE = "aas-mcp-server"
 
-# Minimal OIDC discovery document returned by mock httpx.get in OIDCProxy tests.
+# Minimal OIDC discovery document returned by mock httpx2.get in OIDCProxy tests.
 # OIDCConfiguration requires issuer, authorization_endpoint, token_endpoint,
 # jwks_uri, response_types_supported, subject_types_supported, and
 # id_token_signing_alg_values_supported.
@@ -60,9 +60,9 @@ MOCK_OIDC_DISCOVERY = {
 
 
 def _make_mock_oidc_response():
-    """Return a mock httpx.Response with a minimal OIDC discovery document."""
+    """Return a mock httpx2.Response with a minimal OIDC discovery document."""
     import json
-    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp = MagicMock(spec=httpx2.Response)
     mock_resp.status_code = 200
     mock_resp.json.return_value = MOCK_OIDC_DISCOVERY
     mock_resp.text = json.dumps(MOCK_OIDC_DISCOVERY)
@@ -650,14 +650,14 @@ class TestTokenExchangeShutdownLifecycle:
     @pytest.mark.asyncio
     async def test_lifespan_calls_aclose_on_token_exchange_strategy(self, *args):
         """When TokenExchangeStrategy is used, the server lifespan must call aclose()
-        on shutdown to release the shared httpx connection pool.
+        on shutdown to release the shared httpx2 connection pool.
 
         Uses _lifespan_manager() which invokes self._lifespan(self) — the same
         path the MCP transport takes when the server starts and stops.
         """
-        import httpx
+        import httpx2
 
-        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_http_client = AsyncMock(spec=httpx2.AsyncClient)
 
         valid_spec = {
             "openapi": "3.0.0",
@@ -665,7 +665,7 @@ class TestTokenExchangeShutdownLifecycle:
             "paths": {},
         }
 
-        with patch("aas_mcp_server.backend_auth.httpx.AsyncClient", return_value=mock_http_client), \
+        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_http_client), \
              patch("aas_mcp_server.server.process_component_spec", return_value=valid_spec), \
              patch("aas_mcp_server.server.flatten_spec_schemas", return_value=valid_spec), \
              patch("aas_mcp_server.server.curate_openapi_spec", return_value=valid_spec), \
@@ -683,7 +683,7 @@ class TestTokenExchangeShutdownLifecycle:
 
 
 @patch(
-    "fastmcp.server.auth.oidc_proxy.httpx.get",
+    "fastmcp.server.auth.oidc_proxy.httpx2.get",
     return_value=_make_mock_oidc_response(),
 )
 class TestBuildAuthProvider:
@@ -822,7 +822,7 @@ class TestBuildSessionStore:
         assert isinstance(store, FernetEncryptionWrapper)
 
     @patch(
-        "fastmcp.server.auth.oidc_proxy.httpx.get",
+        "fastmcp.server.auth.oidc_proxy.httpx2.get",
         return_value=_make_mock_oidc_response(),
     )
     @patch.dict(
@@ -836,7 +836,7 @@ class TestBuildSessionStore:
         assert provider is not None
 
     @patch(
-        "fastmcp.server.auth.oidc_proxy.httpx.get",
+        "fastmcp.server.auth.oidc_proxy.httpx2.get",
         return_value=_make_mock_oidc_response(),
     )
     @patch.dict(
@@ -860,7 +860,7 @@ class TestBuildSessionStore:
 # ---------------------------------------------------------------------------
 
 @patch(
-    "fastmcp.server.auth.oidc_proxy.httpx.get",
+    "fastmcp.server.auth.oidc_proxy.httpx2.get",
     return_value=_make_mock_oidc_response(),
 )
 @patch.dict(
@@ -921,7 +921,7 @@ class TestOpenidScopeAlwaysIncluded:
 
 
 @patch(
-    "fastmcp.server.auth.oidc_proxy.httpx.get",
+    "fastmcp.server.auth.oidc_proxy.httpx2.get",
     return_value=_make_mock_oidc_response(),
 )
 class TestAudienceEnforcement:
@@ -1021,7 +1021,7 @@ class TestAudienceEnforcement:
 
 
 @patch(
-    "fastmcp.server.auth.oidc_proxy.httpx.get",
+    "fastmcp.server.auth.oidc_proxy.httpx2.get",
     return_value=_make_mock_oidc_response(),
 )
 class TestWildcardBindAddressError:

@@ -459,7 +459,7 @@ is not working.
 **a. FastMCP version changed `get_http_headers()` behaviour**
 
 FastMCP ≥3.3 explicitly excludes `authorization` from `get_http_headers()`.
-The server uses `BearerTokenAuth` (a custom `httpx.Auth` class) to work around
+The server uses `BearerTokenAuth` (a custom `httpx2.Auth` class) to work around
 this. If you see the header missing, verify you are running the current image:
 
 ```bash

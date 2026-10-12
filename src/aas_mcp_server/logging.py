@@ -6,7 +6,7 @@ Logging configuration for AAS MCP Server.
 
 This module provides centralized logging configuration with support
 for custom log levels and per-logger configuration (e.g., reducing
-httpx verbosity).
+httpx2 verbosity).
 """
 
 import logging
@@ -22,7 +22,7 @@ DEFAULT_LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 # Logger names
-LOGGER_HTTPX = "httpx"
+LOGGER_HTTPX = "httpx2"
 LOGGER_FASTMCP = "fastmcp"
 LOGGER_MCP = "mcp"
 

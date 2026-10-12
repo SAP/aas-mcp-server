@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import httpx
+import httpx2
 
 from aas_mcp_server.http_client import (
     BearerTokenAuth,
@@ -43,7 +43,7 @@ class TestBuildAsyncClient:
     def test_builds_client_with_base_url(self):
         """Client is built with the correct base URL."""
         client = build_async_client(TEST_BASE_URL)
-        assert isinstance(client, httpx.AsyncClient)
+        assert isinstance(client, httpx2.AsyncClient)
         assert str(client.base_url).rstrip("/") == TEST_BASE_URL
 
     def test_sets_default_accept_header(self):
@@ -87,9 +87,9 @@ class TestBuildAsyncClient:
 class TestBearerTokenAuth:
     """Tests for BearerTokenAuth.async_auth_flow."""
 
-    async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx.Request:
+    async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx2.Request:
         """Run async_auth_flow on a dummy request and return the modified request."""
-        request = httpx.Request("GET", TEST_BASE_URL)
+        request = httpx2.Request("GET", TEST_BASE_URL)
         flow = auth.async_auth_flow(request)
         await flow.__anext__()  # advance to yield
         try:
