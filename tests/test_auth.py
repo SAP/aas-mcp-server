@@ -23,7 +23,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
-import httpx
+import httpx2
 import pytest
 
 from fastmcp import FastMCP
@@ -129,7 +129,7 @@ async def test_valid_token_accepted():
     """6.1a: Request with valid Bearer token succeeds (200 or MCP response)."""
     mcp = make_test_server(required_scopes=[SCOPE_READ])
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID))
         assert r.status_code != 401, f"Expected non-401, got {r.status_code}: {r.text}"
 
@@ -139,7 +139,7 @@ async def test_missing_token_returns_401():
     """6.1b: Request without Authorization header returns 401."""
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.post(url, json=MCP_REQUEST)
         assert r.status_code == 401, f"Expected 401, got {r.status_code}"
 
@@ -149,7 +149,7 @@ async def test_invalid_token_returns_401():
     """6.1c: Request with a token not in the static registry returns 401."""
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_INVALID))
         assert r.status_code == 401, f"Expected 401, got {r.status_code}"
 
@@ -159,7 +159,7 @@ async def test_expired_token_returns_401():
     """6.1c: Expired token is rejected with 401."""
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_EXPIRED))
         assert r.status_code == 401, f"Expected 401, got {r.status_code}"
 
@@ -174,7 +174,7 @@ async def test_token_missing_required_scope_returns_4xx():
     """
     mcp = make_test_server(required_scopes=[SCOPE_WRITE])
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             # TOKEN_VALID only has SCOPE_READ, not SCOPE_WRITE
             r = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID))
         assert r.status_code in (401, 403), (
@@ -195,7 +195,7 @@ async def test_second_request_with_invalid_token_rejected():
     """
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r1 = await client.post(url, json=MCP_REQUEST, headers=_bearer(TOKEN_VALID))
             assert r1.status_code != 401, f"First request failed: {r1.status_code}"
 
@@ -221,7 +221,7 @@ async def test_token_in_query_string_rejected():
     """
     mcp = make_test_server()
     async with run_server_async(mcp, transport="streamable-http") as url:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.post(
                 f"{url}?access_token={TOKEN_VALID}",
                 json=MCP_REQUEST,
@@ -285,7 +285,7 @@ async def test_oauth_discovery_endpoint_no_auth_required():
     async with run_server_async(mcp, transport="streamable-http") as url:
         parsed = urlparse(url)
         discovery_url = f"{parsed.scheme}://{parsed.netloc}{OAUTH_DISCOVERY_PATH}"
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             r = await client.get(discovery_url)
         assert r.status_code not in (401, 403), (
             f"Discovery endpoint must not require auth; got {r.status_code}"

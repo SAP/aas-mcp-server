@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/SAP/aas-mcp-server/compare/v0.1.0...v0.2.0) (2026-10-09)
+
+
+### Features
+
+* **auth:** define "openid" scope constant and update usage in OIDCProxy ([39fe1d8](https://github.com/SAP/aas-mcp-server/commit/39fe1d8ebcd86c5ae082bf35cd43785fc8b774a7))
+* **auth:** define "openid" scope constant and update usage in OIDCProxy ([c736d08](https://github.com/SAP/aas-mcp-server/commit/c736d084134f8a7b6900a32553ede7680e2ce1f7))
+* **auth:** register "openid" as a valid scope in OIDCProxy for DCR compliance ([7bdfb86](https://github.com/SAP/aas-mcp-server/commit/7bdfb862f644f498ad111684d6b9a04d5a487e93))
+
+
+### Bug Fixes
+
+* **#83:** preserve path-item-level `parameters` during curation ([498f873](https://github.com/SAP/aas-mcp-server/commit/498f873c35bf45de1e5bbd42f7ee227bea295b42))
+* **backend-auth:** keep query, fragment and userinfo out of endpoint logs ([ce169a5](https://github.com/SAP/aas-mcp-server/commit/ce169a5014d799e7446c694ee1828b750b251748))
+* **backend-auth:** keep query, fragment and userinfo out of endpoint logs ([f597931](https://github.com/SAP/aas-mcp-server/commit/f597931e8887b918d736ed88bb1ee071f817ec06)), closes [#42](https://github.com/SAP/aas-mcp-server/issues/42)
+* **curation:** cap shared `limit` parameter at path-item level ([110fbf0](https://github.com/SAP/aas-mcp-server/commit/110fbf055b0c003dca0833bcd5d5dc8852a9ccec))
+* **curation:** make `_cap_limit_in_parameter_list` match its documented defensive contract ([5808a22](https://github.com/SAP/aas-mcp-server/commit/5808a22ab8ce28a9c62c51f6a144cd9129e85ace))
+* **curation:** preserve path-item-level `parameters` during curation ([0bbb4a6](https://github.com/SAP/aas-mcp-server/commit/0bbb4a65b9b4ddccedc7784ad8ec1fcbbe293f4d)), closes [#83](https://github.com/SAP/aas-mcp-server/issues/83)
+* **integ-tests:** complete MCP handshake and hold stdin open ([466b595](https://github.com/SAP/aas-mcp-server/commit/466b595eb8fe7de7317f3b28841dacb1301bac2b))
+
+
+### Documentation
+
+* **changelog:** rewrite v0.1.0 with real substance, remove duplicate sections ([601491a](https://github.com/SAP/aas-mcp-server/commit/601491a026540a57a0aa7211c9efe8a5d436bcb8))
+* **changelog:** rewrite v0.1.0 with real substance, remove duplicate sections ([7031f48](https://github.com/SAP/aas-mcp-server/commit/7031f481fa3fd7188cd41ee0de9c79a306de7ce8))
+* Updates docs related to the usage of published docker images ([0e8d03e](https://github.com/SAP/aas-mcp-server/commit/0e8d03e7a4aa01262fc2c96b01de7b388392c45d))
+
 ## [Unreleased]
 
 ### Added

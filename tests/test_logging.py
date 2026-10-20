@@ -135,7 +135,7 @@ class TestConstants:
 
     def test_httpx_logger_name_is_correct(self):
         """Test that httpx logger name is correct."""
-        assert LOGGER_HTTPX == "httpx"
+        assert LOGGER_HTTPX == "httpx2"
 
     def test_env_var_httpx_log_level_is_correct(self):
         """Test that httpx log level env var name is correct."""

@@ -20,7 +20,7 @@ This test suite is designed for CI/CD and expects:
 import pytest
 import yaml
 from pathlib import Path
-import httpx
+import httpx2
 
 from aas_mcp_server.config import load_config
 from aas_mcp_server.spec_processor import (
@@ -46,7 +46,7 @@ def test_fixtures_dir():
 def backend_available():
     """Check if backend services are available on port 8081."""
     try:
-        response = httpx.get(f"{BACKEND_URL}/shells", timeout=BACKEND_TIMEOUT)
+        response = httpx2.get(f"{BACKEND_URL}/shells", timeout=BACKEND_TIMEOUT)
         return response.status_code in [200, 404]  # 404 is fine (no shells yet)
     except Exception:
         return False
@@ -450,7 +450,7 @@ class TestBackendConnectivity:
         if not backend_available:
             pytest.skip("Backend not available on localhost:8081")
 
-        response = httpx.get(f"{BACKEND_URL}/shells", timeout=BACKEND_TIMEOUT)
+        response = httpx2.get(f"{BACKEND_URL}/shells", timeout=BACKEND_TIMEOUT)
         assert response.status_code in [200, 404]  # 404 is fine (no shells yet)
 
     def test_backend_health_check(self, backend_available, request):
@@ -466,7 +466,7 @@ class TestBackendConnectivity:
 
         for endpoint in endpoints:
             try:
-                response = httpx.get(
+                response = httpx2.get(
                     f"{BACKEND_URL}{endpoint}", timeout=BACKEND_TIMEOUT
                 )
                 if response.status_code == 200:

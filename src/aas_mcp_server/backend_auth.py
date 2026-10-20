@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Protocol, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
-import httpx
+import httpx2
 from fastmcp.server.dependencies import get_access_token
 
 from .constants import (
@@ -273,7 +273,7 @@ class TokenExchangeStrategy:
     ``EXPIRY_BUFFER_SECONDS`` window. Concurrent requests for the same
     subject coalesce into a single exchange.
 
-    A single ``httpx.AsyncClient`` is created at construction time and reused
+    A single ``httpx2.AsyncClient`` is created at construction time and reused
     across all calls to avoid connection-churn overhead under load.
 
     Args:
@@ -301,7 +301,7 @@ class TokenExchangeStrategy:
         self.audience = audience
         self.scope = scope
         # Shared client — created once, reused per request to avoid connection churn.
-        self._http_client = httpx.AsyncClient()
+        self._http_client = httpx2.AsyncClient()
         # Per-subject cache. Independent from any other strategy's cache.
         self._cache = _KeyedTokenCache()
 
@@ -355,14 +355,14 @@ class TokenExchangeStrategy:
                 auth=(self.client_id, self.client_secret),
             )
             response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
+        except httpx2.HTTPStatusError as exc:
             raise RuntimeError(
                 f"Backend token exchange failed at {self._safe_endpoint}: "
                 f"HTTP {exc.response.status_code}. "
                 f"Check BACKEND_AUTH_AUDIENCE, BACKEND_AUTH_CLIENT_ID, and that "
                 f"the IdP is configured to allow token exchange for this client."
             ) from exc
-        except httpx.RequestError as exc:
+        except httpx2.RequestError as exc:
             raise RuntimeError(
                 f"Backend token exchange request failed: {exc}. "
                 f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
@@ -401,7 +401,7 @@ class TokenExchangeStrategy:
         return exchanged_token, expires_in
 
     async def aclose(self) -> None:
-        """Close the shared httpx.AsyncClient and release the connection pool.
+        """Close the shared httpx2.AsyncClient and release the connection pool.
 
         Should be called on server shutdown. Wired into the FastMCP server
         lifespan by build_mcp_server so it is called automatically.
@@ -431,7 +431,7 @@ class ClientCredentialsStrategy:
     the IdP is not hit on every backend request. The cache coalesces
     concurrent refreshes into a single fetch.
 
-    A single ``httpx.AsyncClient`` is created at construction time and reused.
+    A single ``httpx2.AsyncClient`` is created at construction time and reused.
 
     Args:
         token_endpoint: Full URL of the IdP's token endpoint.
@@ -461,7 +461,7 @@ class ClientCredentialsStrategy:
         self.client_secret = client_secret
         self.scope = scope
         self.audience = audience
-        self._http_client = httpx.AsyncClient()
+        self._http_client = httpx2.AsyncClient()
         self._cache = _KeyedTokenCache()
 
     async def get_token(self) -> str | None:
@@ -498,14 +498,14 @@ class ClientCredentialsStrategy:
                 auth=(self.client_id, self.client_secret),
             )
             response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
+        except httpx2.HTTPStatusError as exc:
             raise RuntimeError(
                 f"Backend client_credentials token request failed at {self._safe_endpoint}: "
                 f"HTTP {exc.response.status_code}. "
                 f"Check BACKEND_AUTH_CLIENT_ID, BACKEND_AUTH_CLIENT_SECRET, and that the IdP "
                 f"is configured to allow the client_credentials grant for this client."
             ) from exc
-        except httpx.RequestError as exc:
+        except httpx2.RequestError as exc:
             raise RuntimeError(
                 f"Backend client_credentials token request failed: {exc}. "
                 f"Check BACKEND_AUTH_TOKEN_ENDPOINT ({self._safe_endpoint}) is reachable."
@@ -540,7 +540,7 @@ class ClientCredentialsStrategy:
         return access_token, expires_in
 
     async def aclose(self) -> None:
-        """Close the shared httpx.AsyncClient and release the connection pool."""
+        """Close the shared httpx2.AsyncClient and release the connection pool."""
         await self._http_client.aclose()
 
     async def __aenter__(self) -> "ClientCredentialsStrategy":
@@ -568,14 +568,14 @@ def _discover_token_endpoint(issuer_url: str) -> str:
     discovery_url = f"{base}/.well-known/openid-configuration"
 
     try:
-        response = httpx.get(discovery_url, timeout=5.0)
+        response = httpx2.get(discovery_url, timeout=5.0)
         response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
+    except httpx2.HTTPStatusError as exc:
         raise ValueError(
             f"OIDC discovery at {discovery_url} returned HTTP {exc.response.status_code}. "
             f"Set BACKEND_AUTH_TOKEN_ENDPOINT explicitly to skip discovery."
         ) from exc
-    except httpx.RequestError as exc:
+    except httpx2.RequestError as exc:
         raise ValueError(
             f"OIDC discovery request to {discovery_url} failed: {exc}. "
             f"Check that OAUTH_ISSUER_URL is reachable, or set BACKEND_AUTH_TOKEN_ENDPOINT explicitly."
