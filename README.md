@@ -238,6 +238,26 @@ docker run \
   -i ghcr.io/sap/aas-mcp-server:latest
 ```
 
+## Outbound AAS Request Headers
+
+Set `AAS_HTTP_HEADERS` to a JSON object to add static headers to every request
+that an MCP tool sends to the AAS backend. For example, configure tenant and
+routing headers in Docker with shell-safe single quotes:
+
+```bash
+-e 'AAS_HTTP_HEADERS={"X-Tenant-ID":"tenant-a","X-Route":"internal"}'
+```
+
+Each header name and value must be a JSON string. The server rejects malformed
+JSON, non-object values, and `Authorization` or `Accept` header names
+(case-insensitively). `Authorization` remains controlled by the backend
+authentication strategy, and `Accept` remains `application/json`.
+
+Header values can be sensitive. Protect `AAS_HTTP_HEADERS` as configuration
+secret material: do not commit values, avoid exposing them in command history,
+and prefer your deployment platform's secret/config injection mechanism when
+appropriate.
+
 ## OAuth 2.1 Authorization
 
 The server supports OAuth 2.1 + PKCE for HTTP transports. When enabled, the
