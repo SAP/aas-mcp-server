@@ -281,6 +281,9 @@ components:
 # MCP_HOST                 Bind host for HTTP transports (default: 127.0.0.1)
 # MCP_PORT                 Bind port for HTTP transports (default: 8000)
 # AAS_HTTP_TIMEOUT         Backend HTTP timeout in seconds (default: 30)
+# AAS_VALIDATE_OUTPUT      Validate tool outputs against generated OpenAPI schemas
+#                          (default: true). Set false to reduce MCP-client overhead
+#                          for large nested AAS response schemas.
 # AAS_MCP_ENABLE_WRITES=1  Enable POST/PUT/PATCH/DELETE operations
 # LOG_LEVEL                Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
 # CONFIG_PATH              Path to this config file

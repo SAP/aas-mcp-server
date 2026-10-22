@@ -20,11 +20,13 @@ from aas_mcp_server.server import (
     build_mcp_server,
     build_auth_provider,
     _build_session_store,
+    _parse_bool,
 )
 from aas_mcp_server.constants import (
     DEFAULT_LOG_LEVEL,
     SERVER_NAME_FORMAT,
     ENV_OAUTH_SESSION_STORE_URL,
+    ENV_AAS_VALIDATE_OUTPUT,
     OAUTH_SCOPE_OPENID,
 )
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
@@ -85,6 +87,40 @@ def make_mock_component(name: str = "aas-repo") -> MagicMock:
     m.overlay = None
     m.has_both_specs.return_value = False
     return m
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("true", True), ("1", True), ("false", False), ("0", False)],
+)
+def test_parse_output_validation(value, expected, monkeypatch):
+    monkeypatch.setenv(ENV_AAS_VALIDATE_OUTPUT, value)
+    assert _parse_bool(ENV_AAS_VALIDATE_OUTPUT, True) is expected
+
+
+def test_parse_output_validation_default_and_invalid_value(monkeypatch):
+    monkeypatch.delenv(ENV_AAS_VALIDATE_OUTPUT, raising=False)
+    assert _parse_bool(ENV_AAS_VALIDATE_OUTPUT, True) is True
+    monkeypatch.setenv(ENV_AAS_VALIDATE_OUTPUT, "sometimes")
+    with pytest.raises(ValueError, match="not a boolean"):
+        _parse_bool(ENV_AAS_VALIDATE_OUTPUT, True)
+
+
+def test_output_validation_false_is_passed_to_fastmcp(monkeypatch):
+    """Disabling AAS_VALIDATE_OUTPUT reaches FastMCP's OpenAPI builder."""
+    monkeypatch.setenv(ENV_AAS_VALIDATE_OUTPUT, "false")
+    with (
+        patch("aas_mcp_server.server.configure_logging"),
+        patch("aas_mcp_server.server.process_component_spec", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.flatten_spec_schemas", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.curate_openapi_spec", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.prune_unused_schemas", return_value=EMPTY_SPEC),
+        patch("aas_mcp_server.server.build_async_client"),
+        patch("aas_mcp_server.server.FastMCP") as mock_fastmcp,
+    ):
+        build_mcp_server(make_mock_component(), "http://localhost:8080", False)
+
+    assert mock_fastmcp.from_openapi.call_args.kwargs["validate_output"] is False
 
 
 class TestBuildMcpServer:
@@ -361,6 +397,7 @@ class TestBuildMcpServer:
             auth=None,
             middleware=mock_fastmcp_class.from_openapi.call_args.kwargs["middleware"],
             mask_error_details=True,
+            validate_output=True,
             lifespan=mock_fastmcp_class.from_openapi.call_args.kwargs["lifespan"],
         )
 
