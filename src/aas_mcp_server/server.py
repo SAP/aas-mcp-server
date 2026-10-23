@@ -55,6 +55,7 @@ from .logging import configure_logging
 from .constants import (
     DEFAULT_LOG_LEVEL,
     DEFAULT_RATE_LIMIT_PER_MINUTE,
+    DEFAULT_VALIDATE_OUTPUT,
     LOCALHOST_ADDRESSES,
     SECONDS_PER_MINUTE,
     SERVER_NAME_FORMAT,
@@ -68,6 +69,7 @@ from .constants import (
     ENV_OAUTH_SERVER_BASE_URL,
     ENV_OAUTH_SESSION_STORE_URL,
     ENV_MCP_RATE_LIMIT_PER_MINUTE,
+    ENV_AAS_VALIDATE_OUTPUT,
     OAUTH_SCOPE_OPENID,
 )
 
@@ -92,6 +94,24 @@ async def _provider_lifespan(
         aclose = getattr(provider, "aclose", None)
         if callable(aclose):
             await aclose()
+
+
+def _parse_bool(env_var: str, default: bool) -> bool:
+    """Read an environment variable as a strict boolean."""
+    raw = os.getenv(env_var)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+
+    raise ValueError(
+        f"Invalid value for {env_var}: {raw!r} is not a boolean. "
+        "Use one of: true, false, 1, 0, yes, no, on, off."
+    )
 
 
 def _parse_positive_int(env_var: str, default: int) -> int:
@@ -433,6 +453,11 @@ def build_mcp_server(
     )
 
     # Generate MCP server from OpenAPI.
+    # A detailed output schema lets FastMCP validate every backend response, but
+    # deeply nested AAS models can make that schema costly for MCP clients to
+    # process. Keep validation enabled unless an operator explicitly opts out.
+    validate_output = _parse_bool(ENV_AAS_VALIDATE_OUTPUT, DEFAULT_VALIDATE_OUTPUT)
+
     # mask_error_details=True prevents internal backend error messages (stack
     # traces, AAS backend URLs, internal hostnames) from leaking to MCP clients.
     #
@@ -447,6 +472,7 @@ def build_mcp_server(
         auth=auth_provider,
         middleware=[rate_limiter],
         mask_error_details=True,
+        validate_output=validate_output,
         lifespan=partial(_provider_lifespan, provider=backend_token_provider),
     )
 
