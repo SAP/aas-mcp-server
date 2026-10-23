@@ -27,7 +27,11 @@ from aas_mcp_server.http_client import (
     CONTENT_TYPE_JSON,
     AUTH_BEARER_FORMAT,
 )
-from aas_mcp_server.constants import ENV_AAS_HTTP_TIMEOUT, DEFAULT_HTTP_TIMEOUT
+from aas_mcp_server.constants import (
+    DEFAULT_HTTP_TIMEOUT,
+    ENV_AAS_HTTP_HEADERS,
+    ENV_AAS_HTTP_TIMEOUT,
+)
 
 
 # Test base URL reused across all client-builder tests
@@ -82,6 +86,61 @@ class TestBuildAsyncClient:
         client = build_async_client(TEST_BASE_URL, backend_token_provider=provider)
         assert isinstance(client.auth, BearerTokenAuth)
         assert client.auth._provider is provider
+
+    @patch.dict(
+        os.environ,
+        {ENV_AAS_HTTP_HEADERS: '{"X-Tenant-ID":"tenant-a","X-Route":"internal"}'},
+        clear=True,
+    )
+    def test_adds_configured_static_headers(self):
+        """Configured string headers are included in every outbound request."""
+        client = build_async_client(TEST_BASE_URL)
+        request = client.build_request("GET", "/shells")
+
+        assert request.headers["X-Tenant-ID"] == "tenant-a"
+        assert request.headers["X-Route"] == "internal"
+        assert request.headers[HEADER_ACCEPT] == CONTENT_TYPE_JSON
+
+    @patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: "   "}, clear=True)
+    def test_ignores_empty_configured_headers(self):
+        """Whitespace-only configuration preserves existing client headers."""
+        client = build_async_client(TEST_BASE_URL)
+        assert "X-Tenant-ID" not in client.headers
+
+    @pytest.mark.parametrize(
+        "configured_headers",
+        ["not-json", "[]", "null", '{"X-Tenant-ID": 1}'],
+    )
+    def test_rejects_invalid_configured_headers(self, configured_headers):
+        """Header configuration must be a JSON object of strings."""
+        with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: configured_headers}, clear=True):
+            with pytest.raises(ValueError, match=ENV_AAS_HTTP_HEADERS):
+                build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.parametrize("reserved_header", ["Authorization", "authorization", "Accept", "ACCEPT"])
+    def test_rejects_reserved_configured_headers(self, reserved_header):
+        """Managed authorization and accept headers cannot be statically configured."""
+        configured_headers = f'{{"{reserved_header}":"value"}}'
+        with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: configured_headers}, clear=True):
+            with pytest.raises(ValueError, match="reserved header"):
+                build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.asyncio
+    @patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: '{"X-Tenant-ID":"tenant-a"}'}, clear=True)
+    async def test_static_headers_coexist_with_bearer_token_auth(self):
+        """Static headers remain present when auth injects the backend token."""
+        provider = MagicMock()
+        provider.get_token = AsyncMock(return_value=TEST_TOKEN)
+        client = build_async_client(TEST_BASE_URL, backend_token_provider=provider)
+        request = client.build_request("GET", "/shells")
+        flow = client.auth.async_auth_flow(request)
+        await flow.__anext__()
+
+        assert request.headers["X-Tenant-ID"] == "tenant-a"
+        assert request.headers[HEADER_ACCEPT] == CONTENT_TYPE_JSON
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=TEST_TOKEN)
+
+        await flow.aclose()
 
 
 class TestBearerTokenAuth:
