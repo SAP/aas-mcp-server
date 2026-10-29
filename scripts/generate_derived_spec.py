@@ -153,7 +153,7 @@ def _apply_filters(spec: Dict[str, Any], filter_paths_list: Optional[List[str]],
     """Apply path filters with optional logging."""
     if not filter_paths_list:
         if verbose:
-            logger.info(f"\n{LOG_STEP_PREFIX_2} Skipping filtering (no filter paths specified)")
+            logger.info("\n[2/3] Skipping filtering (no filter paths specified)")
         return spec
 
     if verbose:
@@ -172,7 +172,7 @@ def _apply_overlay(spec: Dict[str, Any], overlay_path: Optional[Path],
     """Apply overlay with optional logging."""
     if not overlay_path or not overlay_path.exists():
         if verbose:
-            logger.info(f"\n{LOG_STEP_PREFIX_3} Skipping overlay (no overlay file)")
+            logger.info("\n[3/3] Skipping overlay (no overlay file)")
         return spec
 
     if verbose:

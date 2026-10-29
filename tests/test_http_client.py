@@ -226,6 +226,29 @@ class TestBuildAsyncClient:
             with pytest.raises(ValueError, match="reserved header"):
                 build_async_client(TEST_BASE_URL)
 
+    @patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: "   "}, clear=True)
+    def test_ignores_empty_forward_header_allowlist(self):
+        assert _configured_forward_headers() == frozenset()
+
+    @patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: '["X-Subscription-Key", "x-tenant-id"]'}, clear=True)
+    def test_normalizes_forward_header_allowlist_case_insensitively(self):
+        assert _configured_forward_headers() == frozenset({"x-subscription-key", "x-tenant-id"})
+
+    @pytest.mark.parametrize(
+        "allowlist",
+        ["not-json", "{}", "null", '["X-Tenant-ID", 1]', '[""]', '["   "]'],
+    )
+    def test_rejects_invalid_forward_header_allowlist(self, allowlist):
+        with patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: allowlist}, clear=True):
+            with pytest.raises(ValueError, match=ENV_AAS_FORWARD_HEADERS):
+                build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.parametrize("reserved_header", ["Authorization", "ACCEPT", "Cookie", "X-Forwarded-For", "Forwarded", "X-Real-IP"])
+    def test_rejects_reserved_forward_header_allowlist(self, reserved_header):
+        with patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: f'["{reserved_header}"]'}, clear=True):
+            with pytest.raises(ValueError, match="reserved header"):
+                build_async_client(TEST_BASE_URL)
+
     @pytest.mark.asyncio
     @patch.dict(
         os.environ, {ENV_AAS_HTTP_HEADERS: '{"X-Tenant-ID":"tenant-a"}'}, clear=True
@@ -293,7 +316,44 @@ class TestBuildAsyncClient:
         await flow.aclose()
 
 
-class TestBearerTokenAuth:
+    @pytest.mark.asyncio
+    @patch.dict(
+        os.environ,
+        {
+            ENV_AAS_HTTP_HEADERS: '{"X-Subscription-Key":"static-key"}',
+            ENV_AAS_FORWARD_HEADERS: '["x-subscription-key"]',
+        },
+        clear=True,
+    )
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"X-Subscription-Key": "user-key"})
+    async def test_forwarded_header_overrides_static_header(self, _mock_get_http_headers):
+        client = build_async_client(TEST_BASE_URL)
+        request = client.build_request("GET", "/shells")
+        flow = client.auth.async_auth_flow(request)
+        await flow.__anext__()
+
+        assert request.headers["X-Subscription-Key"] == "user-key"
+        await flow.aclose()
+
+    @pytest.mark.asyncio
+    @patch.dict(
+        os.environ,
+        {
+            ENV_AAS_HTTP_HEADERS: '{"X-Subscription-Key":"static-key"}',
+            ENV_AAS_FORWARD_HEADERS: '["x-subscription-key"]',
+        },
+        clear=True,
+    )
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_static_header_remains_when_forwarded_header_is_absent(self, _mock_get_http_headers):
+        client = build_async_client(TEST_BASE_URL)
+        request = client.build_request("GET", "/shells")
+        flow = client.auth.async_auth_flow(request)
+        await flow.__anext__()
+
+        assert request.headers["X-Subscription-Key"] == "static-key"
+        await flow.aclose()
+
     """Tests for BearerTokenAuth.async_auth_flow."""
 
     async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx2.Request:
@@ -383,6 +443,7 @@ class TestBearerTokenAuth:
         await self._run_auth_flow(BearerTokenAuth())
 
         mock_get_http_headers.assert_not_called()
+
 
     @pytest.mark.asyncio
     async def test_injects_bearer_token_when_provider_returns_token(self):
