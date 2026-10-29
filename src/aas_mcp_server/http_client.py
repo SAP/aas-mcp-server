@@ -19,21 +19,24 @@ None and no Authorization header is added.
 """
 
 import ipaddress
+import json
 import logging
 import math
 import os
+import re
 from typing import AsyncGenerator
 from urllib.parse import urlparse
 
 import httpx2
 
-logger = logging.getLogger(__name__)
-
 from .backend_auth import BackendTokenProvider, ForwardStrategy
 from .constants import (
+    ENV_AAS_HTTP_HEADERS,
     ENV_AAS_HTTP_TIMEOUT,
     DEFAULT_HTTP_TIMEOUT,
 )
+
+logger = logging.getLogger(__name__)
 
 # HTTP headers
 HEADER_ACCEPT = "Accept"
@@ -45,6 +48,19 @@ AUTH_BEARER_FORMAT = "Bearer {token}"
 
 # Allowed URL schemes for AAS backend
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
+_RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZATION.lower()})
+
+# RFC 7230 §3.2 token and field-value syntax.
+# Header *names* are tokens: visible ASCII minus delimiters.
+# Header *values* consist of visible ASCII / obs-text chars (\x21-\x7e,
+# \x80-\xff) with optional interior SP/HTAB.  Using \s to exclude bad chars
+# is insufficient: \s matches only ASCII whitespace, so SOH (\x01), ESC
+# (\x1b), DEL (\x7f), and other C0 controls slip through.  The pattern below
+# explicitly allows only the RFC 7230 field-vchar + obs-text ranges.
+# Derived from h11's field_name/field_value regexes — the de-facto RFC 7230
+# reference in Python's HTTP stack (h11 is a transitive dep via httpcore).
+_HEADER_NAME_RE = re.compile(r"[-!#$%&'*+.^_`|~0-9a-zA-Z]+")
+_HEADER_VALUE_RE = re.compile(r"([\x21-\x7e\x80-\xff]+([ \t]+[\x21-\x7e\x80-\xff]+)*)?") 
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -57,6 +73,48 @@ _CLOUD_METADATA_NETWORKS = [
     ipaddress.ip_network("169.254.0.0/16"),  # AWS/GCP/Azure/DO metadata
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
+
+
+def _configured_headers() -> dict[str, str]:
+    """Return validated static headers configured for outbound AAS requests."""
+    raw_headers = os.getenv(ENV_AAS_HTTP_HEADERS, "").strip()
+    if not raw_headers:
+        return {}
+
+    try:
+        headers = json.loads(raw_headers)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_HTTP_HEADERS}: expected a JSON object of string header names and values."
+        ) from exc
+
+    if not isinstance(headers, dict):
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_HTTP_HEADERS}: expected a JSON object of string header names and values."
+        )
+
+    for name, value in headers.items():
+        if not isinstance(name, str) or not isinstance(value, str):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header names and values must be strings."
+            )
+        if not _HEADER_NAME_RE.fullmatch(name):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: {name!r} is not a valid HTTP header name "
+                f"(RFC 7230 token characters only — no spaces, control characters, or delimiters)."
+            )
+        if not _HEADER_VALUE_RE.fullmatch(value):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: value for {name!r} contains illegal characters "
+                f"(only visible ASCII, obs-text \\x80-\\xff, and interior SP/HTAB are permitted "
+                f"in HTTP header values — C0 controls, DEL, CR, LF, and NUL are not)."
+            )
+        if name.lower() in _RESERVED_CONFIGURED_HEADERS:
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: {name!r} is a reserved header managed by the server."
+            )
+
+    return headers
 
 
 def _is_cloud_metadata_ip(ip_str: str) -> bool:
@@ -196,8 +254,8 @@ def build_async_client(
         Configured httpx2.AsyncClient instance
 
     Raises:
-        ValueError: If base_url fails security validation or AAS_HTTP_TIMEOUT
-                    is not a valid positive number.
+        ValueError: If base_url or AAS_HTTP_TIMEOUT is invalid, or if
+            AAS_HTTP_HEADERS is not a valid static-header configuration.
     """
     validate_backend_url(base_url)
 
@@ -215,9 +273,11 @@ def build_async_client(
             f"Value must be a positive finite number in seconds (default: {DEFAULT_HTTP_TIMEOUT})."
         )
 
+    headers = {HEADER_ACCEPT: CONTENT_TYPE_JSON, **_configured_headers()}
+
     return httpx2.AsyncClient(
         base_url=base_url,
-        headers={HEADER_ACCEPT: CONTENT_TYPE_JSON},
+        headers=headers,
         auth=BearerTokenAuth(provider=backend_token_provider),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
