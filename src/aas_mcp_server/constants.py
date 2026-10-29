@@ -93,7 +93,7 @@ FASTMCP_EXCLUDED_HEADERS = frozenset({
     "proxy-connection",
     "mcp-session-id",
 })
-FORWARDED_HEADER_DENYLIST = frozenset({"forwarded", "x-real-ip"})
+FORWARDED_HEADER_DENYLIST = frozenset({"forwarded", "trailer", "x-real-ip"})
 FORWARDED_HEADER_PROXY_PREFIX = "x-forwarded-"
 
 # OAuth 2.1 configuration (for HTTP transports)

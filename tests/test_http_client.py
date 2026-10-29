@@ -144,7 +144,10 @@ class TestBuildAsyncClient:
             with pytest.raises(ValueError, match=ENV_AAS_FORWARD_HEADERS):
                 build_async_client(TEST_BASE_URL)
 
-    @pytest.mark.parametrize("reserved_header", ["Authorization", "ACCEPT", "Cookie", "X-Forwarded-For", "Forwarded", "X-Real-IP"])
+    @pytest.mark.parametrize(
+        "reserved_header",
+        ["Authorization", "ACCEPT", "Cookie", "Trailer", "X-Forwarded-For", "Forwarded", "X-Real-IP"],
+    )
     def test_rejects_reserved_forward_header_allowlist(self, reserved_header):
         with patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: f'["{reserved_header}"]'}, clear=True):
             with pytest.raises(ValueError, match="reserved header"):
