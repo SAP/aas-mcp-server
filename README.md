@@ -320,6 +320,7 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 | `OAUTH_REQUIRED_SCOPES` | Optional | Comma-separated scopes requested from the IdP during the PKCE flow, e.g. `aas:read,aas:write`. |
 | `OAUTH_SESSION_STORE_URL` | Optional | External store for OAuth session state. Supports `redis://`, `rediss://`, `postgresql://`. Defaults to in-memory (state lost on restart). |
 | `MCP_RATE_LIMIT_PER_MINUTE` | Optional | Max requests per client per minute. Default: 60. |
+| `AAS_VALIDATE_OUTPUT` | Optional | Validate tool outputs against generated OpenAPI schemas. Default: `true`; set to `false` to advertise a permissive output schema and avoid validation overhead for large nested AAS responses. |
 
 ### How it works
 
