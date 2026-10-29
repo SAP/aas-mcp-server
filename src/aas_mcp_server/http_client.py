@@ -19,6 +19,7 @@ None and no Authorization header is added.
 """
 
 import ipaddress
+import json
 import logging
 import math
 import os
@@ -26,14 +27,20 @@ from typing import AsyncGenerator
 from urllib.parse import urlparse
 
 import httpx2
-
-logger = logging.getLogger(__name__)
+from fastmcp.server.dependencies import get_http_headers
 
 from .backend_auth import BackendTokenProvider, ForwardStrategy
 from .constants import (
-    ENV_AAS_HTTP_TIMEOUT,
     DEFAULT_HTTP_TIMEOUT,
+    ENV_AAS_FORWARD_HEADERS,
+    ENV_AAS_HTTP_HEADERS,
+    ENV_AAS_HTTP_TIMEOUT,
+    FASTMCP_EXCLUDED_HEADERS,
+    FORWARDED_HEADER_DENYLIST,
+    FORWARDED_HEADER_PROXY_PREFIX,
 )
+
+logger = logging.getLogger(__name__)
 
 # HTTP headers
 HEADER_ACCEPT = "Accept"
@@ -45,6 +52,7 @@ AUTH_BEARER_FORMAT = "Bearer {token}"
 
 # Allowed URL schemes for AAS backend
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
+_RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZATION.lower()})
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -57,6 +65,75 @@ _CLOUD_METADATA_NETWORKS = [
     ipaddress.ip_network("169.254.0.0/16"),  # AWS/GCP/Azure/DO metadata
     ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
+
+
+def _configured_headers() -> dict[str, str]:
+    """Return validated static headers configured for outbound AAS requests."""
+    raw_headers = os.getenv(ENV_AAS_HTTP_HEADERS, "").strip()
+    if not raw_headers:
+        return {}
+
+    try:
+        headers = json.loads(raw_headers)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_HTTP_HEADERS}: expected a JSON object of string header names and values."
+        ) from exc
+
+    if not isinstance(headers, dict):
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_HTTP_HEADERS}: expected a JSON object of string header names and values."
+        )
+
+    for name, value in headers.items():
+        if not isinstance(name, str) or not isinstance(value, str):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header names and values must be strings."
+            )
+        if name.lower() in _RESERVED_CONFIGURED_HEADERS:
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: {name!r} is a reserved header managed by the server."
+            )
+
+    return headers
+
+
+def _configured_forward_headers() -> frozenset[str]:
+    """Return the validated, case-normalized inbound-header allowlist."""
+    raw_headers = os.getenv(ENV_AAS_FORWARD_HEADERS, "").strip()
+    if not raw_headers:
+        return frozenset()
+
+    try:
+        headers = json.loads(raw_headers)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_FORWARD_HEADERS}: expected a JSON array of non-empty header names."
+        ) from exc
+
+    if not isinstance(headers, list):
+        raise ValueError(
+            f"Invalid value for {ENV_AAS_FORWARD_HEADERS}: expected a JSON array of non-empty header names."
+        )
+
+    normalized_headers: set[str] = set()
+    for name in headers:
+        if not isinstance(name, str) or not (normalized_name := name.strip()):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_FORWARD_HEADERS}: header names must be non-empty strings."
+            )
+        normalized_name = normalized_name.lower()
+        if (
+            normalized_name in FASTMCP_EXCLUDED_HEADERS
+            or normalized_name in FORWARDED_HEADER_DENYLIST
+            or normalized_name.startswith(FORWARDED_HEADER_PROXY_PREFIX)
+        ):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_FORWARD_HEADERS}: {name!r} is a reserved header."
+            )
+        normalized_headers.add(normalized_name)
+
+    return frozenset(normalized_headers)
 
 
 def _is_cloud_metadata_ip(ip_str: str) -> bool:
@@ -156,12 +233,21 @@ class BearerTokenAuth(httpx2.Auth):
                   behaviour: forward upstream token from FastMCP context).
     """
 
-    def __init__(self, provider: BackendTokenProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: BackendTokenProvider | None = None,
+        forward_headers: frozenset[str] = frozenset(),
+    ) -> None:
         self._provider: BackendTokenProvider = provider if provider is not None else ForwardStrategy()
+        self._forward_headers = forward_headers
 
     async def async_auth_flow(
         self, request: httpx2.Request
     ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
+        for name, value in get_http_headers().items():
+            if name.lower() in self._forward_headers:
+                request.headers[name] = value
+
         token_str = await self._provider.get_token()
         if token_str is not None:
             logger.debug(
@@ -196,8 +282,8 @@ def build_async_client(
         Configured httpx2.AsyncClient instance
 
     Raises:
-        ValueError: If base_url fails security validation or AAS_HTTP_TIMEOUT
-                    is not a valid positive number.
+        ValueError: If base_url, AAS_HTTP_TIMEOUT, AAS_HTTP_HEADERS, or
+            AAS_FORWARD_HEADERS is invalid.
     """
     validate_backend_url(base_url)
 
@@ -215,10 +301,13 @@ def build_async_client(
             f"Value must be a positive finite number in seconds (default: {DEFAULT_HTTP_TIMEOUT})."
         )
 
+    headers = {HEADER_ACCEPT: CONTENT_TYPE_JSON, **_configured_headers()}
+    forward_headers = _configured_forward_headers()
+
     return httpx2.AsyncClient(
         base_url=base_url,
-        headers={HEADER_ACCEPT: CONTENT_TYPE_JSON},
-        auth=BearerTokenAuth(provider=backend_token_provider),
+        headers=headers,
+        auth=BearerTokenAuth(provider=backend_token_provider, forward_headers=forward_headers),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
     )

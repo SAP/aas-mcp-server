@@ -67,6 +67,10 @@ include-package-data = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[[tool.mypy.overrides]]
+module = ["yaml", "oas_patch"]
+ignore_missing_imports = true
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
