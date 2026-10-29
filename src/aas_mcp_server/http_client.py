@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import re
 from typing import AsyncGenerator
 from urllib.parse import urlparse
 
@@ -48,6 +49,14 @@ AUTH_BEARER_FORMAT = "Bearer {token}"
 # Allowed URL schemes for AAS backend
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 _RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZATION.lower()})
+
+# RFC 7230 §3.2 token and field-value syntax.
+# Header *names* are tokens: visible ASCII minus delimiters.
+# Header *values* must not contain bare CR, LF, or NUL.
+# These patterns match h11's own regexes, which are the de-facto reference
+# for HTTP/1.1 header syntax validation in Python's HTTP stack.
+_HEADER_NAME_RE = re.compile(r"[-!#$%&'*+.^_`|~0-9a-zA-Z]+")
+_HEADER_VALUE_RE = re.compile(r"([^\x00\s]+(?:[ \t]+[^\x00\s]+)*)?")
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -84,6 +93,16 @@ def _configured_headers() -> dict[str, str]:
         if not isinstance(name, str) or not isinstance(value, str):
             raise ValueError(
                 f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header names and values must be strings."
+            )
+        if not _HEADER_NAME_RE.fullmatch(name):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: {name!r} is not a valid HTTP header name "
+                f"(RFC 7230 token characters only — no spaces, control characters, or delimiters)."
+            )
+        if not _HEADER_VALUE_RE.fullmatch(value):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: value for {name!r} contains illegal characters "
+                f"(CR, LF, NUL, or other control characters are not permitted in HTTP header values)."
             )
         if name.lower() in _RESERVED_CONFIGURED_HEADERS:
             raise ValueError(

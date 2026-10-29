@@ -11,6 +11,7 @@ request time. Tests mock that function to verify the correct Authorization
 header is injected when a token is present, and absent when there is none.
 """
 
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -107,13 +108,41 @@ class TestBuildAsyncClient:
         client = build_async_client(TEST_BASE_URL)
         assert "X-Tenant-ID" not in client.headers
 
-    @pytest.mark.parametrize(
-        "configured_headers",
-        ["not-json", "[]", "null", '{"X-Tenant-ID": 1}'],
-    )
+    @pytest.mark.parametrize("configured_headers", ["not-json", "[]", "null", '{"X-Tenant-ID": 1}'])
     def test_rejects_invalid_configured_headers(self, configured_headers):
         """Header configuration must be a JSON object of strings."""
         with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: configured_headers}, clear=True):
+            with pytest.raises(ValueError, match=ENV_AAS_HTTP_HEADERS):
+                build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.parametrize(
+        "bad_name",
+        [
+            "X Bad",          # space is not a token character
+            "X-Inject\r\n",   # CRLF injection in name
+            "X:\x00Nul",       # NUL in name
+            "(bad)",           # delimiter characters
+        ],
+    )
+    def test_rejects_invalid_header_name_syntax(self, bad_name):
+        """Header names must be RFC 7230 tokens — no spaces, control chars, or delimiters."""
+        payload = json.dumps({bad_name: "value"})
+        with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: payload}, clear=True):
+            with pytest.raises(ValueError, match=ENV_AAS_HTTP_HEADERS):
+                build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        [
+            "value\n",          # bare LF
+            "value\r\n",        # CRLF
+            "value\x00null",    # NUL byte
+        ],
+    )
+    def test_rejects_invalid_header_value_syntax(self, bad_value):
+        """Header values must not contain control characters (CR, LF, NUL)."""
+        payload = json.dumps({"X-Key": bad_value})
+        with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: payload}, clear=True):
             with pytest.raises(ValueError, match=ENV_AAS_HTTP_HEADERS):
                 build_async_client(TEST_BASE_URL)
 
