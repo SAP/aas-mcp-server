@@ -127,9 +127,9 @@ def _build_path_methods_map(include_filters: list[str]) -> dict[str, set[str] | 
         elif methods is None:
             # If any filter says "all methods", use all methods
             path_methods[path] = None
-        elif path_methods[path] is not None:
+        elif (existing_methods := path_methods[path]) is not None:
             # Merge methods if both specify methods
-            path_methods[path].update(methods)
+            existing_methods.update(methods)
 
     return path_methods
 

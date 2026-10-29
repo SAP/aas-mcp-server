@@ -157,6 +157,7 @@ def _build_session_store(url: str, encryption_key: bytes) -> AsyncKeyValueProtoc
     """
     from urllib.parse import urlparse
     scheme = urlparse(url).scheme.lower()
+    raw_store: AsyncKeyValueProtocol
     if scheme in ("redis", "rediss"):
         from key_value.aio.stores.redis import RedisStore  # type: ignore[import]
         # Pass ssl=True explicitly for rediss:// — key_value's URL parser omits it

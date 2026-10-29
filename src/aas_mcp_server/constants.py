@@ -71,6 +71,30 @@ ENV_MCP_TRANSPORT = "MCP_TRANSPORT"
 ENV_AAS_BASE_URL = "AAS_BASE_URL"
 ENV_AAS_HTTP_TIMEOUT = "AAS_HTTP_TIMEOUT"
 ENV_AAS_HTTP_HEADERS = "AAS_HTTP_HEADERS"
+ENV_AAS_FORWARD_HEADERS = "AAS_FORWARD_HEADERS"
+
+# Inbound HTTP header forwarding
+# Keep these aligned with FastMCP's get_http_headers() exclusion set.
+FASTMCP_EXCLUDED_HEADERS = frozenset({
+    "host",
+    "content-length",
+    "content-type",
+    "connection",
+    "transfer-encoding",
+    "upgrade",
+    "te",
+    "keep-alive",
+    "expect",
+    "accept",
+    "authorization",
+    "cookie",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "proxy-connection",
+    "mcp-session-id",
+})
+FORWARDED_HEADER_DENYLIST = frozenset({"forwarded", "x-real-ip"})
+FORWARDED_HEADER_PROXY_PREFIX = "x-forwarded-"
 
 # OAuth 2.1 configuration (for HTTP transports)
 ENV_OAUTH_ISSUER_URL = "OAUTH_ISSUER_URL"

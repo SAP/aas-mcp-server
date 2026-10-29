@@ -795,12 +795,13 @@ class TestBuildSessionStore:
         except ImportError:
             pytest.skip("redis extra not installed")
         store = _build_session_store("redis://localhost:6379/0", self._FERNET_KEY)
+        assert RedisStore is not None
         assert isinstance(store, FernetEncryptionWrapper)
 
     def test_rediss_scheme_passes_ssl_true(self):
         """rediss:// constructs a Redis client with ssl=True."""
         try:
-            from key_value.aio.stores.redis import RedisStore
+            __import__("key_value.aio.stores.redis")
         except ImportError:
             pytest.skip("redis extra not installed")
         with patch("redis.asyncio.Redis") as mock_raw_cls, \
@@ -815,7 +816,7 @@ class TestBuildSessionStore:
     def test_postgresql_scheme_returns_fernet_wrapped_postgresql_store(self):
         """postgresql:// URL returns a FernetEncryptionWrapper around a PostgreSQLStore."""
         try:
-            from key_value.aio.stores.postgresql import PostgreSQLStore
+            __import__("key_value.aio.stores.postgresql")
         except ImportError:
             pytest.skip("postgresql extra not installed")
         store = _build_session_store("postgresql://user:pass@localhost/db", self._FERNET_KEY)
@@ -873,7 +874,6 @@ class TestOpenidScopeAlwaysIncluded:
         """extra_authorize_params always includes 'openid' even with no OAUTH_REQUIRED_SCOPES."""
         provider = build_auth_provider("127.0.0.1", 8000)
         assert provider is not None
-        params = provider._extra_authorize_params if hasattr(provider, "_extra_authorize_params") else {}
         # Check via the OIDCProxy kwargs that were captured
         # We access via the internal representation used by FastMCP
         scope = None

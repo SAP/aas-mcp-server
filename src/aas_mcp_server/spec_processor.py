@@ -127,6 +127,8 @@ def process_component_spec(component_config: ComponentConfig) -> Dict[str, Any]:
             "Both official and implementation specs provided - deriving intersection"
         )
 
+        assert component_config.official_spec is not None
+        assert component_config.implementation_spec is not None
         official = load_yaml(component_config.official_spec)
         implementation = load_yaml(component_config.implementation_spec)
 
@@ -140,6 +142,7 @@ def process_component_spec(component_config: ComponentConfig) -> Dict[str, Any]:
     # Case 3: Only official spec
     else:
         logger.info("Only official spec provided - using directly")
+        assert component_config.official_spec is not None
         spec = load_yaml(component_config.official_spec)
 
     # Apply overlay if it exists (optional step)

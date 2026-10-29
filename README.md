@@ -258,6 +258,51 @@ secret material: do not commit values, avoid exposing them in command history,
 and prefer your deployment platform's secret/config injection mechanism when
 appropriate.
 
+### Forward selected inbound HTTP headers
+
+Set `AAS_FORWARD_HEADERS` to a JSON array of header names to pass an
+operator-approved header from each HTTP MCP request to the AAS backend. For
+example, an HTTP client can supply its own subscription key while the server
+keeps a static fallback:
+
+```bash
+-e 'AAS_HTTP_HEADERS={"X-Subscription-Key":"deployment-default"}' \
+-e 'AAS_FORWARD_HEADERS=["X-Subscription-Key"]'
+```
+
+Names match case-insensitively. A forwarded value overrides the matching
+`AAS_HTTP_HEADERS` value for that request; when the client omits the header,
+the static value remains in effect. The feature applies only to HTTP MCP
+requests—stdio and other calls without an HTTP request context forward no
+headers.
+
+The allowlist rejects server-managed, credential, routing, hop-by-hop, and
+proxy-identity headers, including `Authorization`, `Accept`, `Cookie`, `Host`,
+`Content-Length`, `Forwarded`, `X-Forwarded-*`, and `X-Real-IP`. Never log or
+commit user header values. Allowlist only headers appropriate for your access
+model and protect the MCP HTTP endpoint with authentication.
+
+### Claude Code HTTP client with a user subscription key
+
+For a remote HTTP MCP server, keep the user-specific value in the local
+client environment rather than source control. The `${AAS_SUBSCRIPTION_KEY}`
+reference below is resolved by Claude Code when it connects; use single quotes
+so the shell does not expand it while registering the server.
+
+```bash
+export AAS_SUBSCRIPTION_KEY='replace-with-your-user-specific-secret'
+
+claude mcp add aas-repo \
+  --transport http \
+  --scope user \
+  --header 'X-Subscription-Key: ${AAS_SUBSCRIPTION_KEY}' \
+  http://localhost:8000/mcp
+```
+
+This is client-to-MCP input. The server forwards it to the backend only when
+its operator has set `AAS_FORWARD_HEADERS=["X-Subscription-Key"]`; otherwise
+it is omitted. Do not commit the secret or this export value.
+
 ## OAuth 2.1 Authorization
 
 The server supports OAuth 2.1 + PKCE for HTTP transports. When enabled, the

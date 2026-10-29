@@ -169,7 +169,7 @@ def curate_openapi_spec(
 
             # 3) Rename tool via operationId aliasing (LLM-friendly)
             op_id = op.get(OPENAPI_KEY_OPERATION_ID)
-            if op_id in aliases:
+            if isinstance(op_id, str) and op_id in aliases:
                 op[OPENAPI_KEY_OPERATION_ID] = aliases[op_id]
 
             # 4) Cap limit parameter (defensive)
