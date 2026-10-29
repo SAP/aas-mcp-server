@@ -52,11 +52,15 @@ _RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZ
 
 # RFC 7230 §3.2 token and field-value syntax.
 # Header *names* are tokens: visible ASCII minus delimiters.
-# Header *values* must not contain bare CR, LF, or NUL.
-# These patterns match h11's own regexes, which are the de-facto reference
-# for HTTP/1.1 header syntax validation in Python's HTTP stack.
+# Header *values* consist of visible ASCII / obs-text chars (\x21-\x7e,
+# \x80-\xff) with optional interior SP/HTAB.  Using \s to exclude bad chars
+# is insufficient: \s matches only ASCII whitespace, so SOH (\x01), ESC
+# (\x1b), DEL (\x7f), and other C0 controls slip through.  The pattern below
+# explicitly allows only the RFC 7230 field-vchar + obs-text ranges.
+# Derived from h11's field_name/field_value regexes — the de-facto RFC 7230
+# reference in Python's HTTP stack (h11 is a transitive dep via httpcore).
 _HEADER_NAME_RE = re.compile(r"[-!#$%&'*+.^_`|~0-9a-zA-Z]+")
-_HEADER_VALUE_RE = re.compile(r"([^\x00\s]+(?:[ \t]+[^\x00\s]+)*)?")
+_HEADER_VALUE_RE = re.compile(r"([\x21-\x7e\x80-\xff]+([ \t]+[\x21-\x7e\x80-\xff]+)*)?") 
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -102,7 +106,8 @@ def _configured_headers() -> dict[str, str]:
         if not _HEADER_VALUE_RE.fullmatch(value):
             raise ValueError(
                 f"Invalid value for {ENV_AAS_HTTP_HEADERS}: value for {name!r} contains illegal characters "
-                f"(CR, LF, NUL, or other control characters are not permitted in HTTP header values)."
+                f"(only visible ASCII, obs-text \\x80-\\xff, and interior SP/HTAB are permitted "
+                f"in HTTP header values — C0 controls, DEL, CR, LF, and NUL are not)."
             )
         if name.lower() in _RESERVED_CONFIGURED_HEADERS:
             raise ValueError(

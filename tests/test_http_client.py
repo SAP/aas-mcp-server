@@ -137,6 +137,9 @@ class TestBuildAsyncClient:
             "value\n",          # bare LF
             "value\r\n",        # CRLF
             "value\x00null",    # NUL byte
+            "value\x01soh",     # SOH (C0 control, not caught by \s)
+            "value\x1besc",     # ESC (C0 control, not caught by \s)
+            "value\x7fdel",     # DEL
         ],
     )
     def test_rejects_invalid_header_value_syntax(self, bad_value):
