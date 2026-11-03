@@ -244,9 +244,10 @@ class BearerTokenAuth(httpx2.Auth):
     async def async_auth_flow(
         self, request: httpx2.Request
     ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
-        for name, value in get_http_headers().items():
-            if name.lower() in self._forward_headers:
-                request.headers[name] = value
+        if self._forward_headers:
+            for name, value in get_http_headers().items():
+                if name.lower() in self._forward_headers:
+                    request.headers[name] = value
 
         token_str = await self._provider.get_token()
         if token_str is not None:

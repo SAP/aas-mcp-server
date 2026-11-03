@@ -170,7 +170,6 @@ class TestBuildAsyncClient:
 
         await flow.aclose()
 
-
     @pytest.mark.asyncio
     @patch.dict(
         os.environ,
@@ -180,7 +179,7 @@ class TestBuildAsyncClient:
         },
         clear=True,
     )
-    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"X-Subscription-Key": "user-key"})
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"x-subscription-key": "user-key"})
     async def test_forwarded_header_overrides_static_header(self, _mock_get_http_headers):
         client = build_async_client(TEST_BASE_URL)
         request = client.build_request("GET", "/shells")
@@ -209,6 +208,8 @@ class TestBuildAsyncClient:
         assert request.headers["X-Subscription-Key"] == "static-key"
         await flow.aclose()
 
+
+class TestBearerTokenAuth:
     """Tests for BearerTokenAuth.async_auth_flow."""
 
     async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx2.Request:
@@ -225,7 +226,7 @@ class TestBuildAsyncClient:
         return request
 
     @pytest.mark.asyncio
-    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"X-Subscription-Key": "user-key"})
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"x-subscription-key": "user-key"})
     async def test_forwards_allowlisted_http_request_header(self, mock_get_http_headers):
         provider = MagicMock()
         provider.get_token = AsyncMock(return_value=TEST_TOKEN)
@@ -238,7 +239,6 @@ class TestBuildAsyncClient:
         assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=TEST_TOKEN)
         mock_get_http_headers.assert_called_once_with()
 
-
     @pytest.mark.asyncio
     @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
     async def test_no_http_context_does_not_forward_headers(self, mock_get_http_headers):
@@ -248,7 +248,6 @@ class TestBuildAsyncClient:
 
         assert "X-Subscription-Key" not in request.headers
         mock_get_http_headers.assert_called_once_with()
-
 
     @pytest.mark.asyncio
     @patch("aas_mcp_server.http_client.get_http_headers", return_value={"x-unapproved": "must-not-forward"})
@@ -271,6 +270,12 @@ class TestBuildAsyncClient:
 
         assert "TOPSECRET-user-key" not in caplog.text
 
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers")
+    async def test_does_not_read_headers_without_an_allowlist(self, mock_get_http_headers):
+        await self._run_auth_flow(BearerTokenAuth())
+
+        mock_get_http_headers.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_injects_bearer_token_when_provider_returns_token(self):
