@@ -52,15 +52,17 @@ _RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZ
 
 # RFC 7230 §3.2 token and field-value syntax.
 # Header *names* are tokens: visible ASCII minus delimiters.
-# Header *values* consist of visible ASCII / obs-text chars (\x21-\x7e,
-# \x80-\xff) with optional interior SP/HTAB.  Using \s to exclude bad chars
-# is insufficient: \s matches only ASCII whitespace, so SOH (\x01), ESC
-# (\x1b), DEL (\x7f), and other C0 controls slip through.  The pattern below
-# explicitly allows only the RFC 7230 field-vchar + obs-text ranges.
+# Header *values*: httpx2 (the HTTP client used here) encodes header values as
+# ASCII, so only \x21-\x7f are usable in practice even though RFC 7230 also
+# permits obs-text (\x80-\xff).  Using \s to exclude bad chars is insufficient
+# because Python's \s only matches ASCII whitespace, leaving SOH (\x01), ESC
+# (\x1b), and other C0 controls unchecked.  The pattern below uses an explicit
+# allowlist of visible ASCII + interior SP/HTAB — matching exactly what httpx2
+# will accept without raising UnicodeEncodeError.
 # Derived from h11's field_name/field_value regexes — the de-facto RFC 7230
 # reference in Python's HTTP stack (h11 is a transitive dep via httpcore).
 _HEADER_NAME_RE = re.compile(r"[-!#$%&'*+.^_`|~0-9a-zA-Z]+")
-_HEADER_VALUE_RE = re.compile(r"([\x21-\x7e\x80-\xff]+([ \t]+[\x21-\x7e\x80-\xff]+)*)?") 
+_HEADER_VALUE_RE = re.compile(r"([\x21-\x7f]+([ \t]+[\x21-\x7f]+)*)?")
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -94,9 +96,9 @@ def _configured_headers() -> dict[str, str]:
         )
 
     for name, value in headers.items():
-        if not isinstance(name, str) or not isinstance(value, str):
+        if not isinstance(value, str):
             raise ValueError(
-                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header names and values must be strings."
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header values must be strings."
             )
         if not _HEADER_NAME_RE.fullmatch(name):
             raise ValueError(
@@ -273,7 +275,7 @@ def build_async_client(
             f"Value must be a positive finite number in seconds (default: {DEFAULT_HTTP_TIMEOUT})."
         )
 
-    headers = {HEADER_ACCEPT: CONTENT_TYPE_JSON, **_configured_headers()}
+    headers = {**_configured_headers(), HEADER_ACCEPT: CONTENT_TYPE_JSON}
 
     return httpx2.AsyncClient(
         base_url=base_url,

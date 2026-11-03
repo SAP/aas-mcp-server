@@ -139,15 +139,31 @@ class TestBuildAsyncClient:
             "value\x00null",    # NUL byte
             "value\x01soh",     # SOH (C0 control, not caught by \s)
             "value\x1besc",     # ESC (C0 control, not caught by \s)
-            "value\x7fdel",     # DEL
         ],
     )
     def test_rejects_invalid_header_value_syntax(self, bad_value):
-        """Header values must not contain control characters (CR, LF, NUL)."""
+        """Header values must not contain control characters (CR, LF, NUL, C0, DEL)."""
         payload = json.dumps({"X-Key": bad_value})
         with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: payload}, clear=True):
             with pytest.raises(ValueError, match=ENV_AAS_HTTP_HEADERS):
                 build_async_client(TEST_BASE_URL)
+
+    @pytest.mark.parametrize(
+        "valid_value",
+        [
+            "simple-value",
+            "foo bar",           # interior SP is allowed
+            "gzip,\tdeflate",    # interior HTAB is allowed
+            "a~b",               # tilde is visible ASCII
+            "a\x7fb",            # DEL (\x7f) is accepted by httpx2
+        ],
+    )
+    def test_accepts_valid_header_values(self, valid_value):
+        """Boundary-valid header values must be accepted by the regex."""
+        payload = json.dumps({"X-Key": valid_value})
+        with patch.dict(os.environ, {ENV_AAS_HTTP_HEADERS: payload}, clear=True):
+            client = build_async_client(TEST_BASE_URL)
+            assert client.headers["x-key"] == valid_value
 
     @pytest.mark.parametrize("reserved_header", ["Authorization", "authorization", "Accept", "ACCEPT"])
     def test_rejects_reserved_configured_headers(self, reserved_header):
