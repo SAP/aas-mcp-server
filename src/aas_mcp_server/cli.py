@@ -60,7 +60,8 @@ def main() -> None:
         "--component",
         required=True,
         help="AAS component to serve (must be defined in config.yaml). "
-        "Examples: aas-repo, submodel-repo, aas-registry, submodel-registry",
+        "Examples: aas-repo, submodel-repo, aas-registry, submodel-registry, "
+        "concept-description-repo",
     )
 
     parser.add_argument(
