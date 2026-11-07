@@ -51,7 +51,13 @@ LOG_STEP_PREFIX_3 = "[3/3]"
 LOG_INDENT = "      "
 
 # Valid component names
-VALID_COMPONENTS = {"aas-repo", "submodel-repo", "aas-registry", "submodel-registry"}
+VALID_COMPONENTS = {
+    "aas-repo",
+    "submodel-repo",
+    "aas-registry",
+    "submodel-registry",
+    "concept-description-repo",
+}
 
 
 def _resolve_spec_path(component: str, spec_path: Optional[str]) -> Path:
@@ -217,7 +223,8 @@ def generate_derived_spec(
     Generate a derived OpenAPI spec with filtering and overlay applied.
 
     Args:
-        component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry", "submodel-registry")
+        component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry",
+            "submodel-registry", "concept-description-repo")
         spec_path: Path to source OpenAPI spec file (required).
                    Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
         filter_paths_list: List of path filters (e.g., ["/shells:get,post", "/shells/{aasIdentifier}:get"])

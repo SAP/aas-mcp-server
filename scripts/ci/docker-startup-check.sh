@@ -20,7 +20,8 @@ Usage: $0 <component> <config-host-path> <spec-host-path>
 Runs a two-part Docker startup check for one AAS MCP component.
 
 Arguments:
-  <component>          One of: aas-repo, submodel-repo, aas-registry, submodel-registry
+  <component>          One of: aas-repo, submodel-repo, aas-registry, submodel-registry,
+                       concept-description-repo
   <config-host-path>   Host path to the config.yaml the container should load
   <spec-host-path>     Host path to the OpenAPI spec that config.yaml references
 

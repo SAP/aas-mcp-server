@@ -289,6 +289,7 @@ class TestGetFilterPathsFromEnv:
             "submodel-repo",
             "aas-registry",
             "submodel-registry",
+            "concept-description-repo",
         ]
 
         for component in expected_components:
