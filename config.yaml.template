@@ -30,6 +30,7 @@ components:
     # Curation settings (OPTIONAL)
     # Controls which operations are exposed and how they're named
     # If omitted, uses hardcoded defaults from tool_curation.py
+    # (allowlist: GET /shells only), so other components need their own allowlist
     curation:
       # Allowlist: Only these path+method combinations will be exposed
       # Supports wildcards:
