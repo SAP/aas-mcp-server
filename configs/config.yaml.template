@@ -99,6 +99,10 @@ components:
     path_prefix: /concept-descriptions   # or null if separate spec file
     description: Concept Description Repository
     overlay: openapi/overlays/concept-description-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
 # Configuration Guide:
 #
