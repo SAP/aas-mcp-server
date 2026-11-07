@@ -8,8 +8,9 @@ The server logic is identical -- only the config file format differs per client.
 Prerequisites for all clients:
   1. Install:  pip install aas-mcp-server
   2. Create a config.yaml (copy from config.yaml.template)
-  3. Download official AAS OpenAPI specs from:
-     https://github.com/admin-shell-io/aas-specs
+  3. Download the official AAS OpenAPI specs (resolved) from SwaggerHub:
+     https://api.swaggerhub.com/apis/Plattform_i40/<Spec>/<Version>?resolved=true
+     (see README "Setup"; sources: https://github.com/admin-shell-io/aas-specs-api)
 
 ================================================================================
 TRANSPORT MODES

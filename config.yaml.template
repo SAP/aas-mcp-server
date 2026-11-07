@@ -4,7 +4,11 @@
 # Copy this file to config.yaml and customize for your setup.
 #
 # IMPORTANT: You must provide OpenAPI specifications for your components.
-# Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
+# Download the official AAS specs, resolved (no external $refs), from SwaggerHub:
+#   https://api.swaggerhub.com/apis/Plattform_i40/<Spec>/<Version>?resolved=true
+#   e.g. <Spec>=AssetAdministrationShellRepositoryServiceSpecification, <Version>=V3.1.1_SSP-001
+# Sources: https://github.com/admin-shell-io/aas-specs-api (the raw files there use
+# external SwaggerHub $refs, which the server cannot load). See README "Setup".
 #
 # All paths in this file are resolved relative to the config file's directory.
 
@@ -15,7 +19,8 @@ components:
   aas-repo:
     # Official AAS OpenAPI spec
     # At least one of official_spec or implementation_spec must be provided.
-    # Download from: https://github.com/admin-shell-io/aas-specs
+    # Download (resolved) from:
+    # https://api.swaggerhub.com/apis/Plattform_i40/AssetAdministrationShellRepositoryServiceSpecification/V3.1.1_SSP-001?resolved=true
     official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
 
     # Implementation-specific spec

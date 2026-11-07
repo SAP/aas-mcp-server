@@ -11,7 +11,7 @@ vice versa.
 | File | Purpose |
 |---|---|
 | `aas-repo-official-spec.yaml` | Fixture for the `aas-repo` component. **Hand-authored** in the style of `tests/fixtures/sample_official_spec.yaml`. |
-| `submodel-repo-official-spec.yaml` | Fixture for the `submodel-repo` component. **Derived** by manual chunking from an official IDTA Submodel Repository OpenAPI spec (not committed to this repo — see [aas-specs](https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi)). |
+| `submodel-repo-official-spec.yaml` | Fixture for the `submodel-repo` component. **Derived** by manual chunking from an official IDTA Submodel Repository OpenAPI spec (not committed to this repo — see [aas-specs-api](https://github.com/admin-shell-io/aas-specs-api)). |
 | `aas-registry-official-spec.yaml` | Fixture for the `aas-registry` component. **Derived** from an official IDTA AAS Registry OpenAPI spec (same source). |
 | `submodel-registry-official-spec.yaml` | Fixture for the `submodel-registry` component. **Derived** from an official IDTA Submodel Registry OpenAPI spec (same source). |
 | `concept-description-repo-official-spec.yaml` | Fixture for the `concept-description-repo` component. **Derived** from the official IDTA Concept Description Repository Service OpenAPI spec (SSP-001, same source). |
@@ -34,8 +34,8 @@ subset of the source spec:
   `info.version`, and non-empty `paths`)
 
 To refresh a fixture, re-download the corresponding official spec from the
-[aas-specs repository](https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi)
-and repeat the chunking process above.
+[aas-specs-api repository](https://github.com/admin-shell-io/aas-specs-api)
+(or, resolved, from SwaggerHub — see the main README "Setup") and repeat the chunking process above.
 
 ## Local usage
 

@@ -14,7 +14,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 ### Prerequisites
 
-1. **AAS OpenAPI Specifications** - [Download from GitHub](https://github.com/admin-shell-io/aas-specs)
+1. **AAS OpenAPI Specifications** - the IDTA Part 2 API specs, published on [SwaggerHub](https://app.swaggerhub.com/organizations/Plattform_i40) (sources: [admin-shell-io/aas-specs-api](https://github.com/admin-shell-io/aas-specs-api))
 2. **AAS Backend Server** - [SAP BNAC AAS Server](https://www.sap.com/germany/products/business-network/asset-collaboration.html), [Eclipse BaSyx](https://github.com/eclipse-basyx), [FA³ST Service](https://github.com/FraunhoferIOSB/FAAAST-Service), etc.
 3. **Python 3.12+** OR **Docker**
 
@@ -23,8 +23,22 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 1. **Get AAS Specifications**:
    ```bash
    mkdir specs && cd specs
-   # Download from https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi
+   SPEC=AssetAdministrationShellRepositoryServiceSpecification
+   VERSION=V3.1.1_SSP-001
+   curl -fsSL -H "Accept: application/yaml" -o "$SPEC-$VERSION.yaml" \
+     "https://api.swaggerhub.com/apis/Plattform_i40/$SPEC/$VERSION?resolved=true"
    ```
+
+   Repeat with `SPEC` set to `SubmodelRepositoryServiceSpecification`,
+   `AssetAdministrationShellRegistryServiceSpecification`,
+   `SubmodelRegistryServiceSpecification` or
+   `ConceptDescriptionRepositoryServiceSpecification` for the other components.
+
+   Download the **resolved** spec (`?resolved=true`). The raw files in
+   [aas-specs-api](https://github.com/admin-shell-io/aas-specs-api) reference
+   their shared schemas by SwaggerHub URL, and the server cannot follow
+   external `$ref`s, so it fails at startup with
+   `External or non-local reference not supported`.
 
 2. **Create config.yaml** (copy from config.yaml.template):
    ```yaml
