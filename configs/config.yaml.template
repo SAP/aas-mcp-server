@@ -14,7 +14,8 @@ version: v1.0                           # Version string
 description: Brief description of your AAS implementation
 
 # Component configurations
-# Configure each AAS component you want to support (aas-repo, submodel-repo, aas-registry, submodel-registry)
+# Configure each AAS component you want to support (aas-repo, submodel-repo, aas-registry, submodel-registry,
+# concept-description-repo)
 components:
 
   # Asset Administration Shell Repository
@@ -89,6 +90,15 @@ components:
     path_prefix: null
     description: Submodel Registry
     overlay: openapi/overlays/submodel-registry-overlay.yaml
+
+  # Concept Description Repository
+  concept-description-repo:
+    # At least one of implementation_spec or official_spec must be provided.
+    implementation_spec: docs/your-impl-concept-description-repo-endpoints.json
+    official_spec: openapi/ConceptDescriptionRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: /concept-descriptions   # or null if separate spec file
+    description: Concept Description Repository
+    overlay: openapi/overlays/concept-description-repo-overlay.yaml
 
 # Configuration Guide:
 #

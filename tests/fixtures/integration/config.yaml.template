@@ -31,3 +31,9 @@ components:
     curation:
       allowlist:
         - [get, "*"]
+
+  concept-description-repo:
+    official_spec: /app/spec/concept-description-repo-official-spec.yaml
+    curation:
+      allowlist:
+        - [get, "*"]

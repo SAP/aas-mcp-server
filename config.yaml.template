@@ -78,6 +78,14 @@ components:
     # implementation_spec: specs/my-backend-submodel-registry-endpoints.yaml
     # overlay: overlays/submodel-registry-overlay.yaml
 
+  # ===========================================================================
+  # Concept Description Repository Configuration
+  # ===========================================================================
+  concept-description-repo:
+    official_spec: specs/ConceptDescriptionRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-concept-description-repo-endpoints.yaml
+    # overlay: overlays/concept-description-repo-overlay.yaml
+
 # =============================================================================
 # Path Resolution
 # =============================================================================

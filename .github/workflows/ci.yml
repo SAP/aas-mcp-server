@@ -149,7 +149,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [aas-repo, submodel-repo, aas-registry, submodel-registry]
+        component: [aas-repo, submodel-repo, aas-registry, submodel-registry, concept-description-repo]
 
     steps:
       - name: Checkout code
