@@ -104,6 +104,20 @@ components:
       allowlist:
         - [get, "*"]
 
+  # ===========================================================================
+  # AAS Discovery Service Configuration
+  # ===========================================================================
+  aas-discovery:
+    official_spec: specs/DiscoveryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-aas-discovery-endpoints.yaml
+    # overlay: overlays/aas-discovery-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have.
+    # The asset-link search is POST /lookup/shellsByAssetLink: it only reads, but like
+    # every POST it needs an allowlist entry and --enable-writes.
+    curation:
+      allowlist:
+        - [get, "*"]
+
 # =============================================================================
 # Path Resolution
 # =============================================================================

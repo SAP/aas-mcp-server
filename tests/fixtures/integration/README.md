@@ -15,9 +15,10 @@ vice versa.
 | `aas-registry-official-spec.yaml` | Fixture for the `aas-registry` component. **Derived** from an official IDTA AAS Registry OpenAPI spec (same source). |
 | `submodel-registry-official-spec.yaml` | Fixture for the `submodel-registry` component. **Derived** from an official IDTA Submodel Registry OpenAPI spec (same source). |
 | `concept-description-repo-official-spec.yaml` | Fixture for the `concept-description-repo` component. **Derived** from the official IDTA Concept Description Repository Service OpenAPI spec (SSP-001, same source). |
-| `config.yaml.template` | Shared config declaring all five components, each pointing at its fixture spec under `/app/spec/`. |
+| `aas-discovery-official-spec.yaml` | Fixture for the `aas-discovery` component. **Derived** from the official IDTA Discovery Service OpenAPI spec (SSP-001, same source). |
+| `config.yaml.template` | Shared config declaring all six components, each pointing at its fixture spec under `/app/spec/`. |
 
-## Chunking rule (for the four derived fixtures)
+## Chunking rule (for the five derived fixtures)
 
 The real official specs are too large (up to ~143 KB / ~3900 lines) to feed
 into a Docker startup smoke test, so each derived fixture is a hand-picked
