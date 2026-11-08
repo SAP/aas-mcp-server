@@ -306,7 +306,7 @@ components:
 #
 #   docker run \
 #     -v $(pwd)/config.yaml:/app/config/config.yaml \
-#     -v $(pwd)/specs:/app/specs \
+#     -v $(pwd)/specs:/app/config/specs \
 #     -e AAS_BASE_URL=https://your-backend:8080 \
 #     -e MCP_TRANSPORT=streamable-http \
 #     -e MCP_HOST=0.0.0.0 \

@@ -65,7 +65,7 @@ See config.yaml.example in the repository for a complete template.
 
 For Docker users:
   docker run -v $(pwd)/config.yaml:/app/config/config.yaml \\
-             -v $(pwd)/specs:/app/specs \\
+             -v $(pwd)/specs:/app/config/specs \\
              -e AAS_COMPONENT=aas-repo \\
              -e AAS_BASE_URL=http://your-backend:8080 \\
              -i aas-mcp-server

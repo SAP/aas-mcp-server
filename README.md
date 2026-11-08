@@ -64,7 +64,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
    # Docker (recommended) — pulls the pre-built image from GitHub Container Registry
    docker run \
      -v $(pwd)/config.yaml:/app/config/config.yaml \
-     -v $(pwd)/specs:/app/specs \
+     -v $(pwd)/specs:/app/config/specs \
      -e AAS_COMPONENT=aas-repo \
      -e AAS_BASE_URL=http://your-backend:8080 \
      -i ghcr.io/sap/aas-mcp-server:latest
@@ -210,7 +210,7 @@ specific version (`:0.1.0`) or minor line (`:0.1`) for reproducible deployments.
 ```bash
 docker run \
   -v $(pwd)/config.yaml:/app/config/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/app/config/specs \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
   -i ghcr.io/sap/aas-mcp-server:latest
@@ -224,7 +224,7 @@ For remote deployments where MCP clients connect over the network:
 docker run \
   --network your-docker-network \
   -v $(pwd)/config.yaml:/app/config/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/app/config/specs \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
   -e MCP_TRANSPORT=streamable-http \
@@ -253,7 +253,7 @@ claude mcp add aas-repo \
 ```bash
 docker run \
   -v $(pwd)/my-config.yaml:/custom/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/custom/specs \
   -e CONFIG_PATH=/custom/config.yaml \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
@@ -342,7 +342,7 @@ When the server starts, it processes the OpenAPI specification through a pipelin
 
 **Check**:
 - Paths in config.yaml are correct
-- Specs are mounted (Docker): `-v $(pwd)/specs:/app/specs`
+- Specs are mounted next to the config (Docker): `-v $(pwd)/specs:/app/config/specs`; relative paths are resolved from the config file's directory
 
 ### "External or non-local reference not supported"
 
