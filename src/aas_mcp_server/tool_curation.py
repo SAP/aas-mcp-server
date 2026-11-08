@@ -98,9 +98,9 @@ def curate_openapi_spec(
     4. Limit parameter capping - prevent excessive pagination
 
     Wildcard support in allowlist:
-    - [*, /shells] - All methods for /shells path
-    - [get, *] - GET method for all paths
-    - [*, *] - All methods for all paths (use with caution!)
+    - ["*", /shells] - All methods for /shells path
+    - [get, "*"] - GET method for all paths
+    - ["*", "*"] - All methods for all paths (use with caution!)
 
     Args:
         spec: OpenAPI specification dictionary

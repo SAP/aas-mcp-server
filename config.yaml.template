@@ -4,7 +4,9 @@
 # Copy this file to config.yaml and customize for your setup.
 #
 # IMPORTANT: You must provide OpenAPI specifications for your components.
-# Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
+# Take the official AAS specs from a git tag of https://github.com/admin-shell-io/aas-specs-api
+# and bundle each one into a self-contained file (no external $refs), as shown in
+# README "Setup".
 #
 # All paths in this file are resolved relative to the config file's directory.
 
@@ -15,8 +17,8 @@ components:
   aas-repo:
     # Official AAS OpenAPI spec
     # At least one of official_spec or implementation_spec must be provided.
-    # Download from: https://github.com/admin-shell-io/aas-specs
-    official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+    # Bundled from tag v3.2.0, AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
+    official_spec: specs/v3.2.0/AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
 
     # Implementation-specific spec
     # Provide this alongside official_spec to derive an intersection (only endpoints
@@ -60,7 +62,7 @@ components:
   # Submodel Repository Configuration
   # ===========================================================================
   submodel-repo:
-    official_spec: specs/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-repo-endpoints.yaml
     # overlay: overlays/submodel-repo-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have
@@ -72,7 +74,7 @@ components:
   # AAS Registry Configuration
   # ===========================================================================
   aas-registry:
-    official_spec: specs/AssetAdministrationShellRegistryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-aas-registry-endpoints.yaml
     # overlay: overlays/aas-registry-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have
@@ -84,7 +86,7 @@ components:
   # Submodel Registry Configuration
   # ===========================================================================
   submodel-registry:
-    official_spec: specs/SubmodelRegistryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-registry-endpoints.yaml
     # overlay: overlays/submodel-registry-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have
@@ -96,7 +98,7 @@ components:
   # Concept Description Repository Configuration
   # ===========================================================================
   concept-description-repo:
-    official_spec: specs/ConceptDescriptionRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-concept-description-repo-endpoints.yaml
     # overlay: overlays/concept-description-repo-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have
@@ -108,7 +110,7 @@ components:
   # AAS Discovery Service Configuration
   # ===========================================================================
   aas-discovery:
-    official_spec: specs/DiscoveryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/DiscoveryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-aas-discovery-endpoints.yaml
     # overlay: overlays/aas-discovery-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have.
@@ -127,12 +129,14 @@ components:
 #   my-project/
 #     ├── config.yaml (this file)
 #     ├── specs/
-#     │   ├── AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+#     │   ├── v3.2.0/
+#     │   │   └── AssetAdministrationShellRepositoryServiceSpecification/
+#     │   │       └── V3.2_SSP-001.yaml
 #     │   └── my-backend-aas-repo-endpoints.yaml
 #     └── overlays/
 #         └── aas-repo-overlay.yaml
 #
-# Then use: official_spec: specs/AssetAdministration...yaml
+# Then use: official_spec: specs/v3.2.0/AssetAdministration.../V3.2_SSP-001.yaml
 #
 # For absolute paths, provide the full path:
 #   official_spec: /opt/specs/aas-repo-spec.yaml
@@ -335,7 +339,7 @@ components:
 #
 #   docker run \
 #     -v $(pwd)/config.yaml:/app/config/config.yaml \
-#     -v $(pwd)/specs:/app/specs \
+#     -v $(pwd)/specs:/app/config/specs \
 #     -e AAS_BASE_URL=https://your-backend:8080 \
 #     -e MCP_TRANSPORT=streamable-http \
 #     -e MCP_HOST=0.0.0.0 \
