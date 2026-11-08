@@ -33,17 +33,19 @@ components:
     curation:
       # Allowlist: Only these path+method combinations will be exposed
       # Supports wildcards:
-      #   [get, *]      - All GET operations on any path
-      #   [*, /shells]  - All methods on /shells path
-      #   [*, *]        - All methods on all paths (use with caution!)
+      #   [get, "*"]       - All GET operations on any path
+      #   ["*", /shells]   - All methods on /shells path
+      #   ["*", "*"]       - All methods on all paths (use with caution!)
+      # Quote paths with {placeholders} and the "*" wildcard: unquoted, YAML
+      # reads "{" as the start of a mapping and "*" as an alias.
       allowlist:
         - [get, /shells]
         - [post, /shells]
-        - [get, /shells/{aasIdentifier}]
-        - [put, /shells/{aasIdentifier}]
-        - [delete, /shells/{aasIdentifier}]
+        - [get, "/shells/{aasIdentifier}"]
+        - [put, "/shells/{aasIdentifier}"]
+        - [delete, "/shells/{aasIdentifier}"]
         # Example wildcard: Allow all GET operations
-        # - [get, *]
+        # - [get, "*"]
 
       # Aliases: Rename operations for better LLM understanding
       aliases:
