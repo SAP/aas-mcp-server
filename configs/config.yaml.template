@@ -55,9 +55,9 @@ components:
     #   allowlist:                      # List of [method, path] tuples to expose as MCP tools
     #     - [get, /shells]
     #     - [post, /shells]
-    #     - [get, /shells/{aasIdentifier}]
-    #     - [put, /shells/{aasIdentifier}]
-    #     - [delete, /shells/{aasIdentifier}]
+    #     - [get, "/shells/{aasIdentifier}"]
+    #     - [put, "/shells/{aasIdentifier}"]
+    #     - [delete, "/shells/{aasIdentifier}"]
     #   aliases:                        # Map operationId to LLM-friendly names
     #     GetAllAssetAdministrationShells: list_shells
     #     GetAssetAdministrationShellById: get_shell
