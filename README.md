@@ -14,7 +14,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 ### Prerequisites
 
-1. **AAS OpenAPI Specifications** - the IDTA Part 2 API specs, published on [SwaggerHub](https://app.swaggerhub.com/organizations/Plattform_i40) (sources: [admin-shell-io/aas-specs-api](https://github.com/admin-shell-io/aas-specs-api))
+1. **AAS OpenAPI Specifications** - the IDTA Part 2 API specs from the git tags of [admin-shell-io/aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), bundled into one file per API (needs git, perl and Node.js for `npx`)
 2. **AAS Backend Server** - [SAP BNAC AAS Server](https://www.sap.com/germany/products/business-network/asset-collaboration.html), [Eclipse BaSyx](https://github.com/eclipse-basyx), [FA³ST Service](https://github.com/FraunhoferIOSB/FAAAST-Service), etc.
 3. **Python 3.12+** OR **Docker**
 
@@ -22,29 +22,37 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 1. **Get AAS Specifications**:
    ```bash
-   mkdir specs && cd specs
-   SPEC=AssetAdministrationShellRepositoryServiceSpecification
-   VERSION=V3.1.1_SSP-001
-   curl -fsSL -H "Accept: application/yaml" -o "$SPEC-$VERSION.yaml" \
-     "https://api.swaggerhub.com/apis/Plattform_i40/$SPEC/$VERSION?resolved=true"
+   TAG=v3.1.1
+   SPEC=AssetAdministrationShellRepositoryServiceSpecification/V3.1_SSP-001.yaml
+
+   # 1. Clone the tag (a throwaway copy, step 2 edits it)
+   git clone -q --depth 1 --branch "$TAG" \
+     https://github.com/admin-shell-io/aas-specs-api "aas-specs-api-$TAG"
+
+   # 2. v3.1.x only (no-op for v3.2.0): use the shared schemas of the same tag
+   #    instead of fetching them from SwaggerHub
+   find "aas-specs-api-$TAG" -name '*.yaml' -exec perl -pi -e \
+     's#https://api\.swaggerhub\.com/domains/Plattform_i40/(Part1-MetaModel-Schemas|Part2-API-Schemas)/V[0-9.]+#../$1/openapi.yaml#g' {} +
+
+   # 3. Bundle into one self-contained file
+   mkdir -p "specs/$TAG/$(dirname "$SPEC")"
+   npx -y @redocly/cli@1.25.0 bundle "aas-specs-api-$TAG/$SPEC" -o "specs/$TAG/$SPEC"
    ```
 
-   Repeat with `SPEC` set to `SubmodelRepositoryServiceSpecification`,
-   `AssetAdministrationShellRegistryServiceSpecification`,
-   `SubmodelRegistryServiceSpecification` or
-   `ConceptDescriptionRepositoryServiceSpecification` for the other components.
-
-   Download the **resolved** spec (`?resolved=true`). The raw files in
-   [aas-specs-api](https://github.com/admin-shell-io/aas-specs-api) reference
-   their shared schemas by SwaggerHub URL, and the server cannot follow
-   external `$ref`s, so it fails at startup with
-   `External or non-local reference not supported`.
+   Repeat step 3 with `SPEC` set to the file of each other component, e.g.
+   `SubmodelRepositoryServiceSpecification/V3.1_SSP-001.yaml`,
+   `AssetAdministrationShellRegistryServiceSpecification/V3.1_SSP-001.yaml`,
+   `SubmodelRegistryServiceSpecification/V3.1_SSP-001.yaml` or
+   `ConceptDescriptionRepositoryServiceSpecification/V3.1_SSP-001.yaml`.
+   The file names carry the minor version only (`V3.1_SSP-001.yaml` for all
+   v3.1.x tags), so the tag goes into the folder name. Available tags:
+   `git ls-remote --tags https://github.com/admin-shell-io/aas-specs-api`.
 
 2. **Create config.yaml** (copy from config.yaml.template):
    ```yaml
    components:
      aas-repo:
-       official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+       official_spec: specs/v3.1.1/AssetAdministrationShellRepositoryServiceSpecification/V3.1_SSP-001.yaml
        curation:
          allowlist:
            - [get, "*"]  # All GET operations (wildcard)
@@ -335,6 +343,12 @@ When the server starts, it processes the OpenAPI specification through a pipelin
 **Check**:
 - Paths in config.yaml are correct
 - Specs are mounted (Docker): `-v $(pwd)/specs:/app/specs`
+
+### "External or non-local reference not supported"
+
+The spec still references schemas outside the file (SwaggerHub URLs or
+`../Part2-API-Schemas/openapi.yaml`). Bundle it first, see
+[Setup](#setup), step 1.
 
 ### OAuth / HTTP Transport
 

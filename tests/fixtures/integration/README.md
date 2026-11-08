@@ -34,8 +34,9 @@ subset of the source spec:
   `info.version`, and non-empty `paths`)
 
 To refresh a fixture, re-download the corresponding official spec from the
-[aas-specs-api repository](https://github.com/admin-shell-io/aas-specs-api)
-(or, resolved, from SwaggerHub — see the main README "Setup") and repeat the chunking process above.
+[aas-specs-api repository](https://github.com/admin-shell-io/aas-specs-api),
+from the git tag in the fixture's `info.version` (bundled as in the main README
+"Setup"), and repeat the chunking process above.
 
 ## Local usage
 

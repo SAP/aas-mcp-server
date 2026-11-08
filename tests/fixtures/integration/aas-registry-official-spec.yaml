@@ -2,10 +2,11 @@ openapi: 3.0.3
 info:
   title: Asset Administration Shell Registry Service (integration test fixture)
   description: |
-    Minimal fixture derived by manual chunking from the official IDTA
-    Asset Administration Shell Registry Service OpenAPI spec (see aas-specs
-    repo). Retains original operationIds and a small, representative subset
-    of endpoints. Used only by the CI docker startup smoke test.
+    Minimal fixture derived by manual chunking from the official IDTA Asset
+    Administration Shell Registry Service OpenAPI spec (see
+    https://github.com/admin-shell-io/aas-specs-api/tree/v3.1.3). Retains
+    original operationIds and a small, representative subset of endpoints.
+    Used only by the CI docker startup smoke test.
   version: V3.1.3_SSP-001
 paths:
   /shell-descriptors:

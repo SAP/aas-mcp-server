@@ -52,9 +52,9 @@ To get started:
        submodel-repo:
          official_spec: /path/to/Submodel-Repository-spec.yaml
 
-  2. Download the official AAS OpenAPI specs (resolved) from SwaggerHub:
-     https://api.swaggerhub.com/apis/Plattform_i40/<Spec>/<Version>?resolved=true
-     (see README "Setup"; sources: https://github.com/admin-shell-io/aas-specs-api)
+  2. Get the official AAS OpenAPI specs from a git tag of
+     https://github.com/admin-shell-io/aas-specs-api and bundle them into
+     self-contained files (see README "Setup")
 
   3. Provide the config file via:
      - Default location: /app/config/config.yaml (Docker)

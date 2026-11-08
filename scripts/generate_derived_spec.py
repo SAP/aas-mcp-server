@@ -81,7 +81,7 @@ def _resolve_spec_path(component: str, spec_path: Optional[str]) -> Path:
     if not spec_path:
         raise ValueError(
             f"spec_path is required. Please provide the path to the OpenAPI specification file.\n"
-            f"Download official AAS specs (resolved) from: https://app.swaggerhub.com/organizations/Plattform_i40"
+            f"Official AAS specs: https://github.com/admin-shell-io/aas-specs-api (bundle them first, see README 'Setup')"
         )
 
     resolved_path = Path(spec_path)
@@ -226,7 +226,7 @@ def generate_derived_spec(
         component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry",
             "submodel-registry", "concept-description-repo")
         spec_path: Path to source OpenAPI spec file (required).
-                   Download official AAS specs (resolved) from: https://app.swaggerhub.com/organizations/Plattform_i40
+                   Official AAS specs: https://github.com/admin-shell-io/aas-specs-api (bundle them first, see README "Setup")
         filter_paths_list: List of path filters (e.g., ["/shells:get,post", "/shells/{aasIdentifier}:get"])
                           If None, uses environment variable for the component
         overlay_path: Path to overlay YAML file. If None, checks default location: overlays/{component}-overlay.yaml
