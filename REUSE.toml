@@ -9,12 +9,3 @@ path = "**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 SAP SE or an SAP affiliate company and aas-mcp-server contributors"
 SPDX-License-Identifier = "Apache-2.0"
-
-# Official IDTA-01002 OpenAPI specs from https://github.com/admin-shell-io/aas-specs-api,
-# bundled into self-contained files by scripts/ci/update-integration-fixtures.sh
-# (external $refs moved into components; content otherwise unchanged).
-[[annotations]]
-path = "tests/fixtures/integration/*-official-spec.yaml"
-precedence = "override"
-SPDX-FileCopyrightText = "Industrial Digital Twin Association (IDTA)"
-SPDX-License-Identifier = "CC-BY-4.0"

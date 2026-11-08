@@ -33,7 +33,7 @@ Environment variables:
 Example:
   $0 aas-repo \\
     tests/fixtures/integration/config.yaml.template \\
-    tests/fixtures/integration/aas-repo-official-spec.yaml
+    tests/fixtures/integration/specs/aas-repo-official-spec.yaml
 EOF
 }
 

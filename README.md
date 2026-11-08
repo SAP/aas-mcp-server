@@ -22,8 +22,8 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 1. **Get AAS Specifications**:
    ```bash
-   TAG=v3.1.1
-   SPEC=AssetAdministrationShellRepositoryServiceSpecification/V3.1_SSP-001.yaml
+   TAG=v3.2.0
+   SPEC=AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
 
    # 1. Clone the tag (a throwaway copy, step 2 edits it)
    git clone -q --depth 1 --branch "$TAG" \
@@ -40,19 +40,19 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
    ```
 
    Repeat step 3 with `SPEC` set to the file of each other component, e.g.
-   `SubmodelRepositoryServiceSpecification/V3.1_SSP-001.yaml`,
-   `AssetAdministrationShellRegistryServiceSpecification/V3.1_SSP-001.yaml`,
-   `SubmodelRegistryServiceSpecification/V3.1_SSP-001.yaml` or
-   `ConceptDescriptionRepositoryServiceSpecification/V3.1_SSP-001.yaml`.
-   The file names carry the minor version only (`V3.1_SSP-001.yaml` for all
-   v3.1.x tags), so the tag goes into the folder name. Available tags:
+   `SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml`,
+   `AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml`,
+   `SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml` or
+   `ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml`.
+   The file names carry the minor version only (`V3.2_SSP-001.yaml` for all
+   v3.2.x tags), so the tag goes into the folder name. Available tags:
    `git ls-remote --tags https://github.com/admin-shell-io/aas-specs-api`.
 
 2. **Create config.yaml** (copy from config.yaml.template):
    ```yaml
    components:
      aas-repo:
-       official_spec: specs/v3.1.1/AssetAdministrationShellRepositoryServiceSpecification/V3.1_SSP-001.yaml
+       official_spec: specs/v3.2.0/AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
        curation:
          allowlist:
            - [get, "*"]  # All GET operations (wildcard)

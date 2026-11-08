@@ -107,19 +107,22 @@ The CI `integration-test` job is a thin wrapper around
 against a freshly built image:
 
 ```bash
+# Generate the official specs once (needs git, perl and npx)
+scripts/ci/prepare-integration-specs.sh
+
 # Build the image once
 docker build -t aas-mcp-server:test .
 
 # Run the check for any component
 scripts/ci/docker-startup-check.sh aas-repo \
   tests/fixtures/integration/config.yaml.template \
-  tests/fixtures/integration/aas-repo-official-spec.yaml
+  tests/fixtures/integration/specs/aas-repo-official-spec.yaml
 
 # Or loop over all five
 for c in aas-repo submodel-repo aas-registry submodel-registry concept-description-repo; do
   scripts/ci/docker-startup-check.sh "$c" \
     tests/fixtures/integration/config.yaml.template \
-    "tests/fixtures/integration/${c}-official-spec.yaml"
+    "tests/fixtures/integration/specs/${c}-official-spec.yaml"
 done
 ```
 
@@ -131,9 +134,11 @@ Environment variables:
 Fixtures used by this check live in `tests/fixtures/integration/` and are
 independent from the unit-test fixtures next door. See
 [tests/fixtures/integration/README.md](fixtures/integration/README.md):
-they are the official specs from a tag of
-[aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), bundled
-by `scripts/ci/update-integration-fixtures.sh`.
+they are the official specs from a pinned tag of
+[aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), generated
+by `scripts/ci/prepare-integration-specs.sh` and not committed. The tests
+marked `integration` (`pytest tests/ -m integration`) use the same specs and
+are skipped locally until they have been generated.
 
 ## Test Fixtures
 
