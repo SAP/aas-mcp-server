@@ -61,6 +61,10 @@ components:
     official_spec: specs/SubmodelRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-repo-endpoints.yaml
     # overlay: overlays/submodel-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # AAS Registry Configuration
@@ -69,6 +73,10 @@ components:
     official_spec: specs/AssetAdministrationShellRegistryServiceSpecification-V3.1.1_SSP-001.yaml
     # implementation_spec: specs/my-backend-aas-registry-endpoints.yaml
     # overlay: overlays/aas-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # Submodel Registry Configuration
@@ -77,6 +85,10 @@ components:
     official_spec: specs/SubmodelRegistryServiceSpecification-V3.1.1_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-registry-endpoints.yaml
     # overlay: overlays/submodel-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # Concept Description Repository Configuration
@@ -88,7 +100,7 @@ components:
     # Without an allowlist only GET /shells is exposed, which this spec does not have
     curation:
       allowlist:
-        - [get, "*"]                # read-only tools for all Concept Description paths
+        - [get, "*"]
 
 # =============================================================================
 # Path Resolution

@@ -72,6 +72,10 @@ components:
     path_prefix: /submodels        # or null if separate spec file
     description: Submodel Repository
     overlay: openapi/overlays/submodel-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # Asset Administration Shell Registry
   aas-registry:
@@ -81,6 +85,10 @@ components:
     path_prefix: null              # Registries typically have their own spec files
     description: Asset Administration Shell Registry
     overlay: openapi/overlays/aas-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # Submodel Registry
   submodel-registry:
@@ -90,6 +98,10 @@ components:
     path_prefix: null
     description: Submodel Registry
     overlay: openapi/overlays/submodel-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # Concept Description Repository
   concept-description-repo:
