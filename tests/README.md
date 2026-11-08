@@ -94,8 +94,9 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 4. **Docker Build** - Verifies Docker image builds and runs
 
 5. **Docker Startup Integration Test** - Verifies the built image boots
-   successfully for all five AAS components (`aas-repo`, `submodel-repo`,
-   `aas-registry`, `submodel-registry`, `concept-description-repo`) via a
+   successfully for all six AAS components (`aas-repo`, `submodel-repo`,
+   `aas-registry`, `submodel-registry`, `concept-description-repo`,
+   `aas-discovery`) via a
    per-component matrix job.
    Each leg runs `scripts/ci/docker-startup-check.sh` which performs an MCP
    `initialize` handshake and a short uptime check.
@@ -118,8 +119,8 @@ scripts/ci/docker-startup-check.sh aas-repo \
   tests/fixtures/integration/config.yaml.template \
   tests/fixtures/integration/specs/aas-repo-official-spec.yaml
 
-# Or loop over all five
-for c in aas-repo submodel-repo aas-registry submodel-registry concept-description-repo; do
+# Or loop over all six
+for c in aas-repo submodel-repo aas-registry submodel-registry concept-description-repo aas-discovery; do
   scripts/ci/docker-startup-check.sh "$c" \
     tests/fixtures/integration/config.yaml.template \
     "tests/fixtures/integration/specs/${c}-official-spec.yaml"

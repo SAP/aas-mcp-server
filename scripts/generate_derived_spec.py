@@ -57,6 +57,7 @@ VALID_COMPONENTS = {
     "aas-registry",
     "submodel-registry",
     "concept-description-repo",
+    "aas-discovery",
 }
 
 
@@ -224,7 +225,7 @@ def generate_derived_spec(
 
     Args:
         component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry",
-            "submodel-registry", "concept-description-repo")
+            "submodel-registry", "concept-description-repo", "aas-discovery")
         spec_path: Path to source OpenAPI spec file (required).
                    Official AAS specs: https://github.com/admin-shell-io/aas-specs-api (bundle them first, see README "Setup")
         filter_paths_list: List of path filters (e.g., ["/shells:get,post", "/shells/{aasIdentifier}:get"])

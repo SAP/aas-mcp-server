@@ -32,12 +32,15 @@ components:
     # Curation settings (OPTIONAL)
     # Controls which operations are exposed and how they're named
     # If omitted, uses hardcoded defaults from tool_curation.py
+    # (allowlist: GET /shells only), so other components need their own allowlist
     curation:
       # Allowlist: Only these path+method combinations will be exposed
-      # Supports wildcards (quote `*` and paths with `{`, both are special in YAML):
-      #   [get, "*"]      - All GET operations on any path
-      #   ["*", /shells]  - All methods on /shells path
-      #   ["*", "*"]      - All methods on all paths (use with caution!)
+      # Supports wildcards:
+      #   [get, "*"]       - All GET operations on any path
+      #   ["*", /shells]   - All methods on /shells path
+      #   ["*", "*"]       - All methods on all paths (use with caution!)
+      # Quote paths with {placeholders} and the "*" wildcard: unquoted, YAML
+      # reads "{" as the start of a mapping and "*" as an alias.
       allowlist:
         - [get, /shells]
         - [post, /shells]
@@ -62,6 +65,10 @@ components:
     official_spec: specs/v3.2.0/SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-repo-endpoints.yaml
     # overlay: overlays/submodel-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # AAS Registry Configuration
@@ -70,6 +77,10 @@ components:
     official_spec: specs/v3.2.0/AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-aas-registry-endpoints.yaml
     # overlay: overlays/aas-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # Submodel Registry Configuration
@@ -78,6 +89,10 @@ components:
     official_spec: specs/v3.2.0/SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-submodel-registry-endpoints.yaml
     # overlay: overlays/submodel-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # ===========================================================================
   # Concept Description Repository Configuration
@@ -86,6 +101,24 @@ components:
     official_spec: specs/v3.2.0/ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-concept-description-repo-endpoints.yaml
     # overlay: overlays/concept-description-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  # ===========================================================================
+  # AAS Discovery Service Configuration
+  # ===========================================================================
+  aas-discovery:
+    official_spec: specs/DiscoveryServiceSpecification-V3.1.1_SSP-001.yaml
+    # implementation_spec: specs/my-backend-aas-discovery-endpoints.yaml
+    # overlay: overlays/aas-discovery-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have.
+    # The asset-link search is POST /lookup/shellsByAssetLink: it only reads, but like
+    # every POST it needs an allowlist entry and --enable-writes.
+    curation:
+      allowlist:
+        - [get, "*"]
 
 # =============================================================================
 # Path Resolution

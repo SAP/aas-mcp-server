@@ -11,16 +11,17 @@ vice versa.
 
 | File | Purpose |
 |---|---|
-| `config.yaml.template` | Shared config declaring all five components, each pointing at its spec under `/app/spec/`. |
+| `config.yaml.template` | Shared config declaring all six components, each pointing at its spec under `/app/spec/`. |
 | `specs/aas-repo-official-spec.yaml` | Generated. Official Asset Administration Shell Repository Service spec, `AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml` |
 | `specs/submodel-repo-official-spec.yaml` | Generated. Official Submodel Repository Service spec, `SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml` |
 | `specs/aas-registry-official-spec.yaml` | Generated. Official Asset Administration Shell Registry Service spec, `AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml` |
 | `specs/submodel-registry-official-spec.yaml` | Generated. Official Submodel Registry Service spec, `SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml` |
 | `specs/concept-description-repo-official-spec.yaml` | Generated. Official Concept Description Repository Service spec, `ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml` |
+| `specs/aas-discovery-official-spec.yaml` | Generated. Official Discovery Service spec, `DiscoveryServiceSpecification/V3.2_SSP-001.yaml` |
 
 ## Source
 
-The five specs are not part of this repository. CI generates them in its
+The six specs are not part of this repository. CI generates them in its
 workspace from the official IDTA-01002 specs at the tag pinned in
 `scripts/ci/prepare-integration-specs.sh`
 ([`v3.2.0`](https://github.com/admin-shell-io/aas-specs-api/tree/v3.2.0) of

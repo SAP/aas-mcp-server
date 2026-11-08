@@ -292,6 +292,7 @@ The validated Bearer token is forwarded to the AAS backend on every outbound req
 - `aas-registry` - AAS Registry
 - `submodel-registry` - Submodel Registry
 - `concept-description-repo` - Concept Description Repository
+- `aas-discovery` - AAS Discovery Service
 
 ## Testing
 
