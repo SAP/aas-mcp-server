@@ -125,14 +125,15 @@ done
 
 Environment variables:
 - `UPTIME_SECONDS` — how long the uptime phase waits (default `10`)
+- `HANDSHAKE_TIMEOUT` — max seconds to wait for the `tools/list` reply (default `60`)
 - `IMAGE_TAG` — image tag to test (default `aas-mcp-server:test`)
 
 Fixtures used by this check live in `tests/fixtures/integration/` and are
 independent from the unit-test fixtures next door. See
-[tests/fixtures/integration/README.md](fixtures/integration/README.md) for
-the chunking rule (the derived fixtures come from the external
-[aas-specs-api](https://github.com/admin-shell-io/aas-specs-api)
-repo; `aas-repo` is hand-authored).
+[tests/fixtures/integration/README.md](fixtures/integration/README.md):
+they are the official specs from a tag of
+[aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), bundled
+by `scripts/ci/update-integration-fixtures.sh`.
 
 ## Test Fixtures
 
