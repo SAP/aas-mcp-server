@@ -34,6 +34,11 @@ CD_READ_TOOLS = {
     "GetConceptDescriptionById",
     "GetSelfDescription",
 }
+DISCOVERY_READ_TOOLS = {
+    "GetAllAssetAdministrationShellIdsByAssetLink",
+    "GetAllAssetLinksById",
+    "GetSelfDescription",
+}
 EXPECTED_READ_TOOLS = {
     "aas-registry": {
         "GetAllAssetAdministrationShellDescriptors",
@@ -48,6 +53,7 @@ EXPECTED_READ_TOOLS = {
         "GetSubmodelDescriptorById",
     },
     "concept-description-repo": CD_READ_TOOLS,
+    "aas-discovery": DISCOVERY_READ_TOOLS,
 }
 # The repository specs have 27-29 read operations; check the core ones only.
 EXPECTED_READ_TOOLS_INCLUDE = {
@@ -60,10 +66,6 @@ EXPECTED_READ_TOOLS_INCLUDE = {
         "GetAllSubmodels",
         "GetSubmodelById",
         "GetSubmodelElementByPath_SubmodelRepo",
-    },
-    "aas-discovery": {
-        "GetAllAssetAdministrationShellIdsByAssetLink",
-        "GetAllAssetLinksById",
     },
 }
 WRITE_PREFIXES = ("Post", "Put", "Patch", "Delete")
@@ -128,26 +130,24 @@ async def test_concept_description_repo_writes_stay_behind_allowlist():
     assert await _tool_names(component, enable_writes=False) == CD_READ_TOOLS
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_aas_discovery_search_and_writes_stay_behind_allowlist():
     """The POST asset-link search is gated like every other POST operation."""
     component = _integration_component("aas-discovery")
-    read_tools = {
-        "GetAllAssetAdministrationShellIdsByAssetLink",
-        "GetAllAssetLinksById",
-    }
 
-    assert await _tool_names(component, enable_writes=True) == read_tools
+    assert await _tool_names(component, enable_writes=True) == DISCOVERY_READ_TOOLS
 
     component.curation = {"allowlist": [["*", "*"]]}
-    assert await _tool_names(component, enable_writes=False) == read_tools
-    assert await _tool_names(component, enable_writes=True) == read_tools | {
+    assert await _tool_names(component, enable_writes=False) == DISCOVERY_READ_TOOLS
+    assert await _tool_names(component, enable_writes=True) == DISCOVERY_READ_TOOLS | {
         "SearchAllAssetAdministrationShellIdsByAssetLink",
         "PostAllAssetLinksById",
         "DeleteAllAssetLinksById",
     }
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_aas_discovery_keeps_path_level_identifier():
     """`aasIdentifier` is declared on the path item in the official spec."""

@@ -42,8 +42,9 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
    Repeat step 3 with `SPEC` set to the file of each other component, e.g.
    `SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml`,
    `AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml`,
-   `SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml` or
-   `ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml`.
+   `SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml`,
+   `ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml` or
+   `DiscoveryServiceSpecification/V3.2_SSP-001.yaml`.
    The file names carry the minor version only (`V3.2_SSP-001.yaml` for all
    v3.2.x tags), so the tag goes into the folder name. Available tags:
    `git ls-remote --tags https://github.com/admin-shell-io/aas-specs-api`.

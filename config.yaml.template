@@ -110,7 +110,7 @@ components:
   # AAS Discovery Service Configuration
   # ===========================================================================
   aas-discovery:
-    official_spec: specs/DiscoveryServiceSpecification-V3.1.1_SSP-001.yaml
+    official_spec: specs/v3.2.0/DiscoveryServiceSpecification/V3.2_SSP-001.yaml
     # implementation_spec: specs/my-backend-aas-discovery-endpoints.yaml
     # overlay: overlays/aas-discovery-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have.

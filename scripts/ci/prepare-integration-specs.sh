@@ -41,6 +41,7 @@ submodel-repo:SubmodelRepositoryServiceSpecification
 aas-registry:AssetAdministrationShellRegistryServiceSpecification
 submodel-registry:SubmodelRegistryServiceSpecification
 concept-description-repo:ConceptDescriptionRepositoryServiceSpecification
+aas-discovery:DiscoveryServiceSpecification
 "
 
 TMP="$(mktemp -d)"
