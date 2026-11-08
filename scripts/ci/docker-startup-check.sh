@@ -20,18 +20,20 @@ Usage: $0 <component> <config-host-path> <spec-host-path>
 Runs a two-part Docker startup check for one AAS MCP component.
 
 Arguments:
-  <component>          One of: aas-repo, submodel-repo, aas-registry, submodel-registry
+  <component>          One of: aas-repo, submodel-repo, aas-registry, submodel-registry,
+                       concept-description-repo, aas-discovery
   <config-host-path>   Host path to the config.yaml the container should load
   <spec-host-path>     Host path to the OpenAPI spec that config.yaml references
 
 Environment variables:
-  UPTIME_SECONDS   Seconds to wait during the uptime phase (default: 10)
-  IMAGE_TAG        Docker image tag to use (default: aas-mcp-server:test)
+  UPTIME_SECONDS      Seconds to wait during the uptime phase (default: 10)
+  HANDSHAKE_TIMEOUT   Max seconds to wait for the tools/list reply (default: 60)
+  IMAGE_TAG           Docker image tag to use (default: aas-mcp-server:test)
 
 Example:
   $0 aas-repo \\
     tests/fixtures/integration/config.yaml.template \\
-    tests/fixtures/integration/aas-repo-official-spec.yaml
+    tests/fixtures/integration/specs/aas-repo-official-spec.yaml
 EOF
 }
 
@@ -51,6 +53,7 @@ CONFIG_PATH="$2"
 SPEC_PATH="$3"
 
 UPTIME_SECONDS="${UPTIME_SECONDS:-10}"
+HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-60}"
 IMAGE_TAG="${IMAGE_TAG:-aas-mcp-server:test}"
 
 # ---------------------------------------------------------------- setup --
@@ -130,18 +133,70 @@ INITIALIZED_NOTIF='{"jsonrpc":"2.0","method":"notifications/initialized"}'
 TOOLS_REQUEST='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
 set +e
-# The trailing `sleep 2` holds stdin open so the server has time to flush the
-# `tools/list` reply before it sees EOF and starts shutting down. Without it
-# the check races and intermittently misses the id=2 response (~1 in 8 runs).
-HANDSHAKE_STDOUT="$(
-  { printf '%s\n%s\n%s\n' "$INIT_REQUEST" "$INITIALIZED_NOTIF" "$TOOLS_REQUEST"; sleep 2; } \
-    | docker run --rm -i \
-        "${MOUNT_ARGS[@]}" "${ENV_ARGS[@]}" \
-        "$IMAGE_TAG" \
-        2> "$HANDSHAKE_LOG"
-)"
+# Keep the server's stdin open until the `tools/list` reply (id=2) has arrived,
+# then close it so the server exits. Closing stdin earlier (e.g. after a fixed
+# sleep) races the server's startup: with a larger spec the server may see EOF
+# and shut down before it has answered. A watchdog kills the container after
+# HANDSHAKE_TIMEOUT seconds so a hung server fails the check instead of CI.
+# Named pipes with fixed fds keep this working on bash 3.2 (macOS).
+HANDSHAKE_IN="${STATE_DIR}/handshake.stdin"
+HANDSHAKE_OUT="${STATE_DIR}/handshake.stdout"
+HANDSHAKE_CIDFILE="${STATE_DIR}/handshake.cid"
+HANDSHAKE_TIMED_OUT="${STATE_DIR}/handshake.timed-out"
+mkfifo "$HANDSHAKE_IN" "$HANDSHAKE_OUT"
+
+docker run --rm -i \
+  --cidfile "$HANDSHAKE_CIDFILE" \
+  "${MOUNT_ARGS[@]}" "${ENV_ARGS[@]}" \
+  "$IMAGE_TAG" \
+  < "$HANDSHAKE_IN" > "$HANDSHAKE_OUT" 2> "$HANDSHAKE_LOG" &
+HANDSHAKE_PID=$!
+exec 3> "$HANDSHAKE_IN" 4< "$HANDSHAKE_OUT"
+# If the container dies early, writing to its stdin must fail, not kill the script.
+trap '' PIPE
+
+(
+  # Don't inherit the pipe ends: an open copy of fd 3 would keep the server's
+  # stdin from ever reaching EOF.
+  exec 3>&- 4<&-
+  trap 'kill "$sleep_pid" 2>/dev/null; exit 0' TERM
+  sleep "$HANDSHAKE_TIMEOUT" & sleep_pid=$!
+  wait "$sleep_pid"
+  : > "$HANDSHAKE_TIMED_OUT"
+  # Kill the container itself: signalling the `docker run` client only
+  # forwards SIGTERM, which a starting server may survive.
+  if [[ -s "$HANDSHAKE_CIDFILE" ]]; then
+    docker kill "$(cat "$HANDSHAKE_CIDFILE")" >/dev/null 2>&1
+  fi
+  kill -KILL "$HANDSHAKE_PID" 2>/dev/null
+) &
+WATCHDOG_PID=$!
+
+printf '%s\n%s\n%s\n' "$INIT_REQUEST" "$INITIALIZED_NOTIF" "$TOOLS_REQUEST" >&3
+
+HANDSHAKE_STDOUT=""
+while IFS= read -r line <&4; do
+  HANDSHAKE_STDOUT+="${line}"$'\n'
+  if [[ "$(jq -r 'select(.id==2) | "reply"' <<<"$line" 2>/dev/null)" == "reply" ]]; then
+    break
+  fi
+done
+
+exec 3>&-                # EOF on stdin: the server shuts down
+cat <&4 >/dev/null       # drain remaining output so the server never blocks on a full pipe
+exec 4<&-
+wait "$HANDSHAKE_PID"
 HANDSHAKE_RC=$?
+kill "$WATCHDOG_PID" 2>/dev/null
+wait "$WATCHDOG_PID" 2>/dev/null
 set -e
+
+if [[ -f "$HANDSHAKE_TIMED_OUT" ]]; then
+  echo "ERROR: no tools/list reply within ${HANDSHAKE_TIMEOUT}s (HANDSHAKE_TIMEOUT), container stopped" >&2
+  echo "--- container stderr ---" >&2
+  cat "$HANDSHAKE_LOG" >&2 || true
+  exit 1
+fi
 
 # stdio MCP is line-delimited JSON; match responses by id.
 INIT_LINE="$(echo "$HANDSHAKE_STDOUT"   | jq -c 'select(.id==1)' 2>/dev/null | head -n1)"

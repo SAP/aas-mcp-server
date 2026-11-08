@@ -14,7 +14,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 ### Prerequisites
 
-1. **AAS OpenAPI Specifications** - [Download from GitHub](https://github.com/admin-shell-io/aas-specs)
+1. **AAS OpenAPI Specifications** - the IDTA Part 2 API specs from the git tags of [admin-shell-io/aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), bundled into one file per API (needs git, perl and Node.js for `npx`)
 2. **AAS Backend Server** - [SAP BNAC AAS Server](https://www.sap.com/germany/products/business-network/asset-collaboration.html), [Eclipse BaSyx](https://github.com/eclipse-basyx), [FA³ST Service](https://github.com/FraunhoferIOSB/FAAAST-Service), etc.
 3. **Python 3.12+** OR **Docker**
 
@@ -22,15 +22,38 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
 
 1. **Get AAS Specifications**:
    ```bash
-   mkdir specs && cd specs
-   # Download from https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi
+   TAG=v3.2.0
+   SPEC=AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
+
+   # 1. Clone the tag (a throwaway copy, step 2 edits it)
+   git clone -q --depth 1 --branch "$TAG" \
+     https://github.com/admin-shell-io/aas-specs-api "aas-specs-api-$TAG"
+
+   # 2. v3.1.x only (no-op for v3.2.0): use the shared schemas of the same tag
+   #    instead of fetching them from SwaggerHub
+   find "aas-specs-api-$TAG" -name '*.yaml' -exec perl -pi -e \
+     's#https://api\.swaggerhub\.com/domains/Plattform_i40/(Part1-MetaModel-Schemas|Part2-API-Schemas)/V[0-9.]+#../$1/openapi.yaml#g' {} +
+
+   # 3. Bundle into one self-contained file
+   mkdir -p "specs/$TAG/$(dirname "$SPEC")"
+   npx -y @redocly/cli@1.25.0 bundle "aas-specs-api-$TAG/$SPEC" -o "specs/$TAG/$SPEC"
    ```
+
+   Repeat step 3 with `SPEC` set to the file of each other component, e.g.
+   `SubmodelRepositoryServiceSpecification/V3.2_SSP-001.yaml`,
+   `AssetAdministrationShellRegistryServiceSpecification/V3.2_SSP-001.yaml`,
+   `SubmodelRegistryServiceSpecification/V3.2_SSP-001.yaml`,
+   `ConceptDescriptionRepositoryServiceSpecification/V3.2_SSP-001.yaml` or
+   `DiscoveryServiceSpecification/V3.2_SSP-001.yaml`.
+   The file names carry the minor version only (`V3.2_SSP-001.yaml` for all
+   v3.2.x tags), so the tag goes into the folder name. Available tags:
+   `git ls-remote --tags https://github.com/admin-shell-io/aas-specs-api`.
 
 2. **Create config.yaml** (copy from config.yaml.template):
    ```yaml
    components:
      aas-repo:
-       official_spec: specs/AssetAdministrationShellRepositoryServiceSpecification-V3.1.1_SSP-001.yaml
+       official_spec: specs/v3.2.0/AssetAdministrationShellRepositoryServiceSpecification/V3.2_SSP-001.yaml
        curation:
          allowlist:
            - [get, "*"]  # All GET operations (wildcard)
@@ -42,7 +65,7 @@ An AAS MCP adapter that exposes configured Asset Administration Shell APIs as Mo
    # Docker (recommended) — pulls the pre-built image from GitHub Container Registry
    docker run \
      -v $(pwd)/config.yaml:/app/config/config.yaml \
-     -v $(pwd)/specs:/app/specs \
+     -v $(pwd)/specs:/app/config/specs \
      -e AAS_COMPONENT=aas-repo \
      -e AAS_BASE_URL=http://your-backend:8080 \
      -i ghcr.io/sap/aas-mcp-server:latest
@@ -188,7 +211,7 @@ specific version (`:0.1.0`) or minor line (`:0.1`) for reproducible deployments.
 ```bash
 docker run \
   -v $(pwd)/config.yaml:/app/config/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/app/config/specs \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
   -i ghcr.io/sap/aas-mcp-server:latest
@@ -202,7 +225,7 @@ For remote deployments where MCP clients connect over the network:
 docker run \
   --network your-docker-network \
   -v $(pwd)/config.yaml:/app/config/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/app/config/specs \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
   -e MCP_TRANSPORT=streamable-http \
@@ -231,7 +254,7 @@ claude mcp add aas-repo \
 ```bash
 docker run \
   -v $(pwd)/my-config.yaml:/custom/config.yaml \
-  -v $(pwd)/specs:/app/specs \
+  -v $(pwd)/specs:/custom/specs \
   -e CONFIG_PATH=/custom/config.yaml \
   -e AAS_COMPONENT=aas-repo \
   -e AAS_BASE_URL=http://your-backend:8080 \
@@ -289,6 +312,8 @@ The validated Bearer token is forwarded to the AAS backend on every outbound req
 - `submodel-repo` - Submodel Repository  
 - `aas-registry` - AAS Registry
 - `submodel-registry` - Submodel Registry
+- `concept-description-repo` - Concept Description Repository
+- `aas-discovery` - AAS Discovery Service
 
 ## Testing
 
@@ -339,7 +364,13 @@ When the server starts, it processes the OpenAPI specification through a pipelin
 
 **Check**:
 - Paths in config.yaml are correct
-- Specs are mounted (Docker): `-v $(pwd)/specs:/app/specs`
+- Specs are mounted next to the config (Docker): `-v $(pwd)/specs:/app/config/specs`; relative paths are resolved from the config file's directory
+
+### "External or non-local reference not supported"
+
+The spec still references schemas outside the file (SwaggerHub URLs or
+`../Part2-API-Schemas/openapi.yaml`). Bundle it first, see
+[Setup](#setup), step 1.
 
 ### OAuth / HTTP Transport
 

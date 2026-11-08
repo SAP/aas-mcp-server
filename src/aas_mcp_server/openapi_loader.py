@@ -9,6 +9,9 @@ Environment Variables (per component):
     SUBMODEL_REPO_FILTER_PATHS: Semicolon-separated list of path filters for submodel-repo
     AAS_REGISTRY_FILTER_PATHS: Semicolon-separated list of path filters for aas-registry
     SUBMODEL_REGISTRY_FILTER_PATHS: Semicolon-separated list of path filters for submodel-registry
+    CONCEPT_DESCRIPTION_REPO_FILTER_PATHS: Semicolon-separated list of path filters for
+        concept-description-repo
+    AAS_DISCOVERY_FILTER_PATHS: Semicolon-separated list of path filters for aas-discovery
 
 Path Filter Format:
     - "/path" - include all HTTP methods for this path

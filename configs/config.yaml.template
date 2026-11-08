@@ -14,7 +14,8 @@ version: v1.0                           # Version string
 description: Brief description of your AAS implementation
 
 # Component configurations
-# Configure each AAS component you want to support (aas-repo, submodel-repo, aas-registry, submodel-registry)
+# Configure each AAS component you want to support (aas-repo, submodel-repo, aas-registry, submodel-registry,
+# concept-description-repo, aas-discovery)
 components:
 
   # Asset Administration Shell Repository
@@ -50,13 +51,14 @@ components:
     # Control which operations are exposed as MCP tools and how they're named
     # If provided, these settings override the hardcoded defaults in tool_curation.py
     # If omitted, the server uses default values from tool_curation.py
+    # (allowlist: GET /shells only), so other components need their own allowlist
     # curation:
     #   allowlist:                      # List of [method, path] tuples to expose as MCP tools
     #     - [get, /shells]
     #     - [post, /shells]
-    #     - [get, /shells/{aasIdentifier}]
-    #     - [put, /shells/{aasIdentifier}]
-    #     - [delete, /shells/{aasIdentifier}]
+    #     - [get, "/shells/{aasIdentifier}"]   # quote paths with {placeholders}
+    #     - [put, "/shells/{aasIdentifier}"]
+    #     - [delete, "/shells/{aasIdentifier}"]
     #   aliases:                        # Map operationId to LLM-friendly names
     #     GetAllAssetAdministrationShells: list_shells
     #     GetAssetAdministrationShellById: get_shell
@@ -70,6 +72,10 @@ components:
     path_prefix: /submodels        # or null if separate spec file
     description: Submodel Repository
     overlay: openapi/overlays/submodel-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # Asset Administration Shell Registry
   aas-registry:
@@ -79,6 +85,10 @@ components:
     path_prefix: null              # Registries typically have their own spec files
     description: Asset Administration Shell Registry
     overlay: openapi/overlays/aas-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
 
   # Submodel Registry
   submodel-registry:
@@ -88,6 +98,38 @@ components:
     path_prefix: null
     description: Submodel Registry
     overlay: openapi/overlays/submodel-registry-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  # Concept Description Repository
+  concept-description-repo:
+    # At least one of implementation_spec or official_spec must be provided.
+    implementation_spec: docs/your-impl-concept-description-repo-endpoints.json
+    official_spec: openapi/ConceptDescriptionRepositoryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: /concept-descriptions   # or null if separate spec file
+    description: Concept Description Repository
+    overlay: openapi/overlays/concept-description-repo-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  # AAS Discovery Service
+  aas-discovery:
+    # At least one of implementation_spec or official_spec must be provided.
+    implementation_spec: docs/your-impl-aas-discovery-endpoints.json
+    official_spec: openapi/DiscoveryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: null
+    description: AAS Discovery Service
+    overlay: openapi/overlays/aas-discovery-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have.
+    # The asset-link search is POST /lookup/shellsByAssetLink: it only reads, but like
+    # every POST it needs an allowlist entry and --enable-writes.
+    curation:
+      allowlist:
+        - [get, "*"]
 
 # Configuration Guide:
 #
@@ -116,9 +158,11 @@ components:
 #    - Follow OpenAPI Overlay Specification (https://github.com/OAI/Overlay-Specification)
 #
 # 5. curation:
-#    - Optional: Document which operations to expose and how to name them
-#    - Currently for documentation only (runtime uses tool_curation.py defaults)
-#    - Future: May be consumed by runtime to override defaults
+#    - Optional per component: which operations to expose as MCP tools
+#      (allowlist) and how to name them (aliases)
+#    - Read at runtime; overrides the defaults in tool_curation.py
+#    - Without an allowlist only GET /shells is exposed, so every component
+#      other than aas-repo needs one (e.g. [get, "*"]) to expose any tools
 
 # After Configuration:
 #
