@@ -146,4 +146,5 @@ COMPONENT_FILTER_ENV_VARS = {
     "aas-registry": "AAS_REGISTRY_FILTER_PATHS",
     "submodel-registry": "SUBMODEL_REGISTRY_FILTER_PATHS",
     "concept-description-repo": "CONCEPT_DESCRIPTION_REPO_FILTER_PATHS",
+    "aas-discovery": "AAS_DISCOVERY_FILTER_PATHS",
 }

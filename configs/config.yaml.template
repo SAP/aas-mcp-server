@@ -15,7 +15,7 @@ description: Brief description of your AAS implementation
 
 # Component configurations
 # Configure each AAS component you want to support (aas-repo, submodel-repo, aas-registry, submodel-registry,
-# concept-description-repo)
+# concept-description-repo, aas-discovery)
 components:
 
   # Asset Administration Shell Repository
@@ -112,6 +112,21 @@ components:
     description: Concept Description Repository
     overlay: openapi/overlays/concept-description-repo-overlay.yaml
     # Without an allowlist only GET /shells is exposed, which this spec does not have
+    curation:
+      allowlist:
+        - [get, "*"]
+
+  # AAS Discovery Service
+  aas-discovery:
+    # At least one of implementation_spec or official_spec must be provided.
+    implementation_spec: docs/your-impl-aas-discovery-endpoints.json
+    official_spec: openapi/DiscoveryServiceSpecification-V3.1.1_SSP-001-resolved.yaml
+    path_prefix: null
+    description: AAS Discovery Service
+    overlay: openapi/overlays/aas-discovery-overlay.yaml
+    # Without an allowlist only GET /shells is exposed, which this spec does not have.
+    # The asset-link search is POST /lookup/shellsByAssetLink: it only reads, but like
+    # every POST it needs an allowlist entry and --enable-writes.
     curation:
       allowlist:
         - [get, "*"]

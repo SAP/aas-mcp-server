@@ -32,6 +32,10 @@ EXPECTED_READ_TOOLS = {
         "GetAllConceptDescriptions",
         "GetConceptDescriptionById",
     },
+    "aas-discovery": {
+        "GetAllAssetAdministrationShellIdsByAssetLink",
+        "GetAllAssetLinksById",
+    },
 }
 
 
@@ -89,3 +93,38 @@ async def test_concept_description_repo_writes_stay_behind_allowlist():
         "GetAllConceptDescriptions",
         "GetConceptDescriptionById",
     }
+
+
+@pytest.mark.asyncio
+async def test_aas_discovery_search_and_writes_stay_behind_allowlist():
+    """The POST asset-link search is gated like every other POST operation."""
+    component = _integration_component("aas-discovery")
+    read_tools = {
+        "GetAllAssetAdministrationShellIdsByAssetLink",
+        "GetAllAssetLinksById",
+    }
+
+    assert await _tool_names(component, enable_writes=True) == read_tools
+
+    component.curation = {"allowlist": [["*", "*"]]}
+    assert await _tool_names(component, enable_writes=False) == read_tools
+    assert await _tool_names(component, enable_writes=True) == read_tools | {
+        "SearchAllAssetAdministrationShellIdsByAssetLink",
+        "PostAllAssetLinksById",
+        "DeleteAllAssetLinksById",
+    }
+
+
+@pytest.mark.asyncio
+async def test_aas_discovery_keeps_path_level_identifier():
+    """`aasIdentifier` is declared on the path item in the official spec."""
+    mcp = build_mcp_server(
+        _integration_component("aas-discovery"), "http://127.0.0.1:9", False
+    )
+    async with Client(mcp) as client:
+        tools = {tool.name: tool for tool in await client.list_tools()}
+
+    schema = tools["GetAllAssetLinksById"].input_schema
+
+    assert "aasIdentifier" in schema["properties"]
+    assert "aasIdentifier" in schema["required"]

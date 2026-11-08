@@ -95,8 +95,7 @@ Configure any combination of these AAS components:
 - **`aas-registry`**: AAS Registry
 - **`submodel-registry`**: Submodel Registry
 - **`concept-description-repo`**: Concept Description Repository
-
-Additional AAS services (e.g., AAS Discovery Service) will be supported in future releases.
+- **`aas-discovery`**: AAS Discovery Service
 
 ## Creating Implementation Documentation
 
