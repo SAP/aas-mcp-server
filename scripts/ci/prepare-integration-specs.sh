@@ -17,7 +17,7 @@
 #
 # Renovate opens a dedicated PR for each new upstream release and updates TAG and
 # COMMIT there (see renovate.json). On that PR, adjust the expected tools in
-# tests/test_component_fixtures.py and the version in the docs.
+# tests/test_component_fixtures.py if they changed.
 #
 # Usage: scripts/ci/prepare-integration-specs.sh
 # Needs git, perl and npx (Node.js). Works with bash 3.2 (macOS).

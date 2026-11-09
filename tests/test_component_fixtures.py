@@ -24,9 +24,9 @@ from aas_mcp_server.server import build_mcp_server
 INTEGRATION_DIR = Path(__file__).parent / "fixtures" / "integration"
 SPECS_DIR = INTEGRATION_DIR / "specs"
 
-# Read-only tools each official SSP-001 spec (aas-specs-api v3.2.0, the tag
-# pinned in scripts/ci/prepare-integration-specs.sh) should expose with the
-# integration curation (`[get, "*"]`).
+# Read-only tools each official SSP-001 spec (the aas-specs-api tag pinned in
+# scripts/ci/prepare-integration-specs.sh) should expose with the integration
+# curation (`[get, "*"]`).
 CD_READ_TOOLS = {
     "GenerateSerializationByIds",
     "GetAllConceptDescriptions",
