@@ -64,6 +64,7 @@ MOCK_OIDC_DISCOVERY = {
 def _make_mock_oidc_response():
     """Return a mock httpx2.Response with a minimal OIDC discovery document."""
     import json
+
     mock_resp = MagicMock(spec=httpx2.Response)
     mock_resp.status_code = 200
     mock_resp.json.return_value = MOCK_OIDC_DISCOVERY
@@ -353,7 +354,9 @@ class TestBuildMcpServer:
         )
 
         mock_build_client.assert_called_once()
-        assert mock_build_client.call_args.kwargs["base_url"] == "http://prod-server:9000"
+        assert (
+            mock_build_client.call_args.kwargs["base_url"] == "http://prod-server:9000"
+        )
 
     @patch("aas_mcp_server.server.configure_logging")
     @patch("aas_mcp_server.server.process_component_spec")
@@ -702,13 +705,25 @@ class TestTokenExchangeShutdownLifecycle:
             "paths": {},
         }
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_http_client), \
-             patch("aas_mcp_server.server.process_component_spec", return_value=valid_spec), \
-             patch("aas_mcp_server.server.flatten_spec_schemas", return_value=valid_spec), \
-             patch("aas_mcp_server.server.curate_openapi_spec", return_value=valid_spec), \
-             patch("aas_mcp_server.server.prune_unused_schemas", return_value=valid_spec):
-
-            mcp = build_mcp_server(make_mock_component(), "http://localhost:8080", False)
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_http_client,
+            ),
+            patch(
+                "aas_mcp_server.server.process_component_spec", return_value=valid_spec
+            ),
+            patch(
+                "aas_mcp_server.server.flatten_spec_schemas", return_value=valid_spec
+            ),
+            patch("aas_mcp_server.server.curate_openapi_spec", return_value=valid_spec),
+            patch(
+                "aas_mcp_server.server.prune_unused_schemas", return_value=valid_spec
+            ),
+        ):
+            mcp = build_mcp_server(
+                make_mock_component(), "http://localhost:8080", False
+            )
 
             # _lifespan_manager() calls self._lifespan(self) — the same path the MCP
             # transport takes. mcp.lifespan() only iterates providers, not _lifespan.
@@ -809,6 +824,7 @@ class TestBuildAuthProvider:
     def test_missing_client_id_raises_value_error(self, _mock_get):
         """OAUTH_ISSUER_URL set but OAUTH_CLIENT_ID absent → ValueError."""
         import pytest
+
         with pytest.raises(ValueError, match="OAUTH_CLIENT_ID"):
             build_auth_provider(host="127.0.0.1", port=8000)
 
@@ -816,6 +832,7 @@ class TestBuildAuthProvider:
 # ---------------------------------------------------------------------------
 # Session store factory
 # ---------------------------------------------------------------------------
+
 
 class TestBuildSessionStore:
     # A stable 32-byte Fernet key (URL-safe base64) for use in all store tests.
@@ -832,16 +849,19 @@ class TestBuildSessionStore:
         except ImportError:
             pytest.skip("redis extra not installed")
         store = _build_session_store("redis://localhost:6379/0", self._FERNET_KEY)
+        assert RedisStore is not None
         assert isinstance(store, FernetEncryptionWrapper)
 
     def test_rediss_scheme_passes_ssl_true(self):
         """rediss:// constructs a Redis client with ssl=True."""
         try:
-            from key_value.aio.stores.redis import RedisStore
+            __import__("key_value.aio.stores.redis")
         except ImportError:
             pytest.skip("redis extra not installed")
-        with patch("redis.asyncio.Redis") as mock_raw_cls, \
-             patch("key_value.aio.stores.redis.RedisStore") as mock_redis_cls:
+        with (
+            patch("redis.asyncio.Redis") as mock_raw_cls,
+            patch("key_value.aio.stores.redis.RedisStore") as mock_redis_cls,
+        ):
             mock_raw_cls.return_value = MagicMock()
             mock_redis_cls.return_value = MagicMock()
             _build_session_store("rediss://localhost:6380/0", self._FERNET_KEY)
@@ -852,10 +872,12 @@ class TestBuildSessionStore:
     def test_postgresql_scheme_returns_fernet_wrapped_postgresql_store(self):
         """postgresql:// URL returns a FernetEncryptionWrapper around a PostgreSQLStore."""
         try:
-            from key_value.aio.stores.postgresql import PostgreSQLStore
+            __import__("key_value.aio.stores.postgresql")
         except ImportError:
             pytest.skip("postgresql extra not installed")
-        store = _build_session_store("postgresql://user:pass@localhost/db", self._FERNET_KEY)
+        store = _build_session_store(
+            "postgresql://user:pass@localhost/db", self._FERNET_KEY
+        )
         assert isinstance(store, FernetEncryptionWrapper)
 
     @patch(
@@ -864,7 +886,11 @@ class TestBuildSessionStore:
     )
     @patch.dict(
         os.environ,
-        {"OAUTH_ISSUER_URL": TEST_ISSUER_URL, "OAUTH_CLIENT_ID": "cid", "OAUTH_CLIENT_SECRET": "secret"},
+        {
+            "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+            "OAUTH_CLIENT_ID": "cid",
+            "OAUTH_CLIENT_SECRET": "secret",
+        },
         clear=True,
     )
     def test_auth_provider_uses_memory_store_by_default(self, _mock_get):
@@ -896,13 +922,18 @@ class TestBuildSessionStore:
 # openid scope always included
 # ---------------------------------------------------------------------------
 
+
 @patch(
     "fastmcp.server.auth.oidc_proxy.httpx2.get",
     return_value=_make_mock_oidc_response(),
 )
 @patch.dict(
     os.environ,
-    {"OAUTH_ISSUER_URL": TEST_ISSUER_URL, "OAUTH_CLIENT_ID": "cid", "OAUTH_CLIENT_SECRET": "secret"},
+    {
+        "OAUTH_ISSUER_URL": TEST_ISSUER_URL,
+        "OAUTH_CLIENT_ID": "cid",
+        "OAUTH_CLIENT_SECRET": "secret",
+    },
     clear=True,
 )
 class TestOpenidScopeAlwaysIncluded:
@@ -910,14 +941,15 @@ class TestOpenidScopeAlwaysIncluded:
         """extra_authorize_params always includes 'openid' even with no OAUTH_REQUIRED_SCOPES."""
         provider = build_auth_provider("127.0.0.1", 8000)
         assert provider is not None
-        params = provider._extra_authorize_params if hasattr(provider, "_extra_authorize_params") else {}
         # Check via the OIDCProxy kwargs that were captured
         # We access via the internal representation used by FastMCP
         scope = None
         for attr in ("_extra_authorize_params", "_kwargs"):
             d = getattr(provider, attr, {}) or {}
             if isinstance(d, dict):
-                scope = d.get("scope") or (d.get("extra_authorize_params") or {}).get("scope")
+                scope = d.get("scope") or (d.get("extra_authorize_params") or {}).get(
+                    "scope"
+                )
                 if scope:
                     break
         # If we can't introspect the internals directly, verify the build doesn't crash
@@ -925,7 +957,9 @@ class TestOpenidScopeAlwaysIncluded:
         # is done via the existing _make_mock_oidc_response + direct call tracing.
         assert provider is not None
 
-    @patch.dict(os.environ, {"OAUTH_REQUIRED_SCOPES": "aas:read,aas:write"}, clear=False)
+    @patch.dict(
+        os.environ, {"OAUTH_REQUIRED_SCOPES": "aas:read,aas:write"}, clear=False
+    )
     def test_openid_prepended_with_required_scopes(self, _mock_get):
         """When OAUTH_REQUIRED_SCOPES is set, openid is prepended."""
         provider = build_auth_provider("127.0.0.1", 8000)
@@ -1077,6 +1111,7 @@ class TestWildcardBindAddressError:
     def test_wildcard_0000_without_server_base_url_raises(self, _mock_get):
         """0.0.0.0 bind + no OAUTH_SERVER_BASE_URL → ValueError (OIDCProxy needs callback URL)."""
         import pytest
+
         with pytest.raises(ValueError, match="OAUTH_SERVER_BASE_URL"):
             build_auth_provider(host="0.0.0.0", port=8000)
 
@@ -1093,6 +1128,7 @@ class TestWildcardBindAddressError:
     def test_wildcard_ipv6_without_server_base_url_raises(self, _mock_get):
         """:: (IPv6 wildcard) bind + no OAUTH_SERVER_BASE_URL → ValueError."""
         import pytest
+
         with pytest.raises(ValueError, match="OAUTH_SERVER_BASE_URL"):
             build_auth_provider(host="::", port=8000)
 
@@ -1199,6 +1235,7 @@ class TestRateLimitValidation:
         import logging
 
         import aas_mcp_server.server as _server_mod
+
         captured = []
 
         class _Capture(logging.Handler):
@@ -1224,10 +1261,20 @@ class TestRateLimitValidation:
             f"All captured: {captured!r}"
         )
         # Must mention scopes and the per-flow enforcement constraint
-        assert any(keyword in all_output for keyword in ("scope", "idp", "upstream", "delegat")), (
+        assert any(
+            keyword in all_output for keyword in ("scope", "idp", "upstream", "delegat")
+        ), (
             f"Expected WARNING to mention scope delegation to upstream IdP, got: {warning_messages!r}"
         )
-        assert any(keyword in all_output for keyword in ("per-request", "authorization flow", "per-authorization", "not per-request")), (
+        assert any(
+            keyword in all_output
+            for keyword in (
+                "per-request",
+                "authorization flow",
+                "per-authorization",
+                "not per-request",
+            )
+        ), (
             f"Expected WARNING to explicitly state enforcement is per-authorization-flow only, "
             f"not per-request. Got: {warning_messages!r}"
         )
