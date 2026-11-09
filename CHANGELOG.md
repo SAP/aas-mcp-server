@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/SAP/aas-mcp-server/compare/v0.2.0...v0.3.0) (2026-11-09)
+
+
+### Features
+
+* add aas-discovery as a supported component ([#113](https://github.com/SAP/aas-mcp-server/issues/113)) ([6a92a22](https://github.com/SAP/aas-mcp-server/commit/6a92a221b020fafa19669b9bd4667fd47d72a64c)), closes [#44](https://github.com/SAP/aas-mcp-server/issues/44)
+* add concept-description-repo as a supported component ([#106](https://github.com/SAP/aas-mcp-server/issues/106)) ([0c593ca](https://github.com/SAP/aas-mcp-server/commit/0c593ca307fb5b89628ad269ba205c31c4dc2d53)), closes [#43](https://github.com/SAP/aas-mcp-server/issues/43)
+* add configurable outbound headers ([d623b28](https://github.com/SAP/aas-mcp-server/commit/d623b2899fc46385a3bb063551e6c347ae0ccb30))
+* add configurable outbound headers ([147174b](https://github.com/SAP/aas-mcp-server/commit/147174b0a9b36b9a016e9dcf5cb8f8d4017318ed))
+* forward allowlisted inbound headers ([#103](https://github.com/SAP/aas-mcp-server/issues/103)) ([57d217e](https://github.com/SAP/aas-mcp-server/commit/57d217ef420fd15b2bd2b5f7222c1661b6676213))
+* make MCP output validation configurable ([8e86fbc](https://github.com/SAP/aas-mcp-server/commit/8e86fbcfb4c6e927967b7c2ba8c158d028339324))
+* make MCP output validation configurable ([71805e3](https://github.com/SAP/aas-mcp-server/commit/71805e333707203b6cd21184a52a500649e83811))
+
+
+### Bug Fixes
+
+* **config:** quote allowlist paths so config.yaml.template parses ([#110](https://github.com/SAP/aas-mcp-server/issues/110)) ([b3337b6](https://github.com/SAP/aas-mcp-server/commit/b3337b6abc5161955bdb249356c1682c4fdd18d2))
+* **curation:** warn when curation leaves no tools ([#108](https://github.com/SAP/aas-mcp-server/issues/108)) ([bb6a245](https://github.com/SAP/aas-mcp-server/commit/bb6a245c1c506b29bd2de089886aab2bfc9eb6de))
+* **deps:** drop the Python 3.15 lock cap now that beartype 0.23 is released ([0b0c31c](https://github.com/SAP/aas-mcp-server/commit/0b0c31c03183b84596a0f5d6e6c95765969af337))
+* **deps:** upgrade to mcp 2 and fastmcp 4, migrate HTTP client to httpx2 ([776f39a](https://github.com/SAP/aas-mcp-server/commit/776f39a74fc33a9b5f6edd596874a017f32986c2))
+* **deps:** upgrade to mcp 2 and fastmcp 4, migrate HTTP client to httpx2 ([01c7750](https://github.com/SAP/aas-mcp-server/commit/01c775043c270110e19f0dcb1f740990340a5e2d))
+* tighten header value regex to reject all C0 controls and DEL ([f7b1d59](https://github.com/SAP/aas-mcp-server/commit/f7b1d59454620878744214d686e820ad7fdf675e))
+* use the official IDTA OpenAPI specs for setup and integration tests ([#112](https://github.com/SAP/aas-mcp-server/issues/112)) ([238495a](https://github.com/SAP/aas-mcp-server/commit/238495a510c6bcb685b114c34b801186a15fad42))
+
+
+### Documentation
+
+* **server:** name both stateful token strategies in the lifespan comment ([5391624](https://github.com/SAP/aas-mcp-server/commit/53916245839619664df42cdbb9ae42e8e3ebfbe6))
+
 ## [0.2.0](https://github.com/SAP/aas-mcp-server/compare/v0.1.0...v0.2.0) (2026-10-09)
 
 
