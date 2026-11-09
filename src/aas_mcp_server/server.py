@@ -176,17 +176,23 @@ def _build_session_store(url: str, encryption_key: bytes) -> AsyncKeyValueProtoc
     of backend. Raises ValueError for unrecognised schemes.
     """
     from urllib.parse import urlparse
+
     scheme = urlparse(url).scheme.lower()
+    raw_store: AsyncKeyValueProtocol
     if scheme in ("redis", "rediss"):
         from key_value.aio.stores.redis import RedisStore  # type: ignore[import]
+
         # Pass ssl=True explicitly for rediss:// — key_value's URL parser omits it
         if scheme == "rediss":
             from redis.asyncio import Redis as _Redis  # type: ignore[import]
+
             parsed = urlparse(url)
             client = _Redis(
                 host=parsed.hostname or "localhost",
                 port=parsed.port or 6380,
-                db=int(parsed.path.lstrip("/")) if parsed.path and parsed.path != "/" else 0,
+                db=int(parsed.path.lstrip("/"))
+                if parsed.path and parsed.path != "/"
+                else 0,
                 username=parsed.username,
                 password=parsed.password,
                 ssl=True,
@@ -197,6 +203,7 @@ def _build_session_store(url: str, encryption_key: bytes) -> AsyncKeyValueProtoc
             raw_store = RedisStore(url=url)
     elif scheme in ("postgresql", "postgres"):
         from key_value.aio.stores.postgresql import PostgreSQLStore  # type: ignore[import]
+
         raw_store = PostgreSQLStore(url=url)
     else:
         raise ValueError(
@@ -312,7 +319,9 @@ def build_auth_provider(
         client_storage: AsyncKeyValueProtocol = _build_session_store(
             store_url, _storage_encryption_key
         )
-        _store_label = f"{type(client_storage).__name__}({store_url.split('://')[0]}://...)"
+        _store_label = (
+            f"{type(client_storage).__name__}({store_url.split('://')[0]}://...)"
+        )
     else:
         client_storage = MemoryStore()
         _store_label = "MemoryStore"
@@ -340,11 +349,11 @@ def build_auth_provider(
         client_secret=client_secret,
         audience=audience,
         required_scopes=None,  # Don't enforce scopes on FastMCP tokens — MCP clients
-                               # register via DCR with no scopes.
+        # register via DCR with no scopes.
         base_url=server_base_url,
         jwt_signing_key=jwt_signing_key,
         forward_resource=False,  # Disable RFC 8707 resource param — rejected by SAP IAS
-                                 # and unnecessary for non-resource-indicator IdPs.
+        # and unnecessary for non-resource-indicator IdPs.
         require_authorization_consent="external",  # Consent handled by upstream IdP
         client_storage=client_storage,
         extra_authorize_params=extra_authorize_params,
@@ -357,7 +366,9 @@ def build_auth_provider(
     # directly. Without this, MCP clients calling /authorize?scope=openid get an
     # "invalid_scope: Client was not registered with scope openid" error from the
     # proxy itself (before the request ever reaches the upstream IdP).
-    _advertised_scopes = list(dict.fromkeys([OAUTH_SCOPE_OPENID, *(required_scopes or [])]))
+    _advertised_scopes = list(
+        dict.fromkeys([OAUTH_SCOPE_OPENID, *(required_scopes or [])])
+    )
     proxy.update_default_scopes(_advertised_scopes)
 
     return proxy
@@ -438,7 +449,9 @@ def build_mcp_server(
     backend_token_provider = build_backend_token_provider()
 
     # Build HTTP client with the selected backend token strategy
-    client = build_async_client(base_url=base_url, backend_token_provider=backend_token_provider)
+    client = build_async_client(
+        base_url=base_url, backend_token_provider=backend_token_provider
+    )
 
     # Build auth provider (None when OAuth not configured)
     auth_provider = build_auth_provider(host=host, port=port)

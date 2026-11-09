@@ -39,13 +39,16 @@ from aas_mcp_server.constants import (
 # ForwardStrategy
 # ---------------------------------------------------------------------------
 
+
 class TestForwardStrategy:
     @pytest.mark.asyncio
     async def test_returns_upstream_token(self):
         """ForwardStrategy returns the token from get_access_token()."""
         mock_token = MagicMock()
         mock_token.token = "upstream-token-abc"
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_token):
+        with patch(
+            "aas_mcp_server.backend_auth.get_access_token", return_value=mock_token
+        ):
             strategy = ForwardStrategy()
             result = await strategy.get_token()
         assert result == "upstream-token-abc"
@@ -63,6 +66,7 @@ class TestForwardStrategy:
 # NoneStrategy
 # ---------------------------------------------------------------------------
 
+
 class TestNoneStrategy:
     @pytest.mark.asyncio
     async def test_always_returns_none(self):
@@ -76,8 +80,11 @@ class TestNoneStrategy:
 # TokenExchangeStrategy
 # ---------------------------------------------------------------------------
 
+
 class TestTokenExchangeStrategy:
-    def _make_mock_client(self, json_response: dict, status_code: int = 200) -> tuple[AsyncMock, MagicMock]:
+    def _make_mock_client(
+        self, json_response: dict, status_code: int = 200
+    ) -> tuple[AsyncMock, MagicMock]:
         """Build a mock httpx2.AsyncClient with a preset POST response."""
         mock_response = MagicMock()
         mock_response.status_code = status_code
@@ -95,10 +102,20 @@ class TestTokenExchangeStrategy:
         mock_upstream = MagicMock()
         mock_upstream.token = "user-upstream-token"
 
-        mock_client, _ = self._make_mock_client({"access_token": "backend-token-xyz", "token_type": "Bearer"})
+        mock_client, _ = self._make_mock_client(
+            {"access_token": "backend-token-xyz", "token_type": "Bearer"}
+        )
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -130,10 +147,20 @@ class TestTokenExchangeStrategy:
         mock_upstream = MagicMock()
         mock_upstream.token = "user-token"
 
-        mock_client, _ = self._make_mock_client({"access_token": "scoped-backend-token", "token_type": "Bearer"})
+        mock_client, _ = self._make_mock_client(
+            {"access_token": "scoped-backend-token", "token_type": "Bearer"}
+        )
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -159,15 +186,25 @@ class TestTokenExchangeStrategy:
         mock_response = MagicMock()
         mock_response.status_code = 400
         mock_response.raise_for_status = MagicMock(
-            side_effect=_httpx.HTTPStatusError("400", request=MagicMock(), response=mock_response)
+            side_effect=_httpx.HTTPStatusError(
+                "400", request=MagicMock(), response=mock_response
+            )
         )
         mock_response.json.return_value = {"error": "invalid_grant"}
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -187,10 +224,20 @@ class TestTokenExchangeStrategy:
         mock_upstream.token = "user-token"
 
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=_httpx.RequestError("connection refused"))
+        mock_client.post = AsyncMock(
+            side_effect=_httpx.RequestError("connection refused")
+        )
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -207,10 +254,20 @@ class TestTokenExchangeStrategy:
         mock_upstream = MagicMock()
         mock_upstream.token = "user-token"
 
-        mock_client, _ = self._make_mock_client({"token_type": "Bearer"})  # missing access_token
+        mock_client, _ = self._make_mock_client(
+            {"token_type": "Bearer"}
+        )  # missing access_token
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -233,13 +290,23 @@ class TestTokenExchangeStrategy:
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.headers = {"content-type": "text/html"}
-        mock_response.json.side_effect = _httpx.DecodingError("not json", request=MagicMock())
+        mock_response.json.side_effect = _httpx.DecodingError(
+            "not json", request=MagicMock()
+        )
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -247,7 +314,9 @@ class TestTokenExchangeStrategy:
                 audience="backend-client-id",
                 scope=None,
             )
-            with pytest.raises(RuntimeError, match="[Jj][Ss][Oo][Nn]|[Pp]arse|[Rr]esponse"):
+            with pytest.raises(
+                RuntimeError, match="[Jj][Ss][Oo][Nn]|[Pp]arse|[Rr]esponse"
+            ):
                 await strategy.get_token()
 
     @pytest.mark.asyncio
@@ -256,10 +325,20 @@ class TestTokenExchangeStrategy:
         mock_upstream = MagicMock()
         mock_upstream.token = "user-token"
 
-        mock_client, _ = self._make_mock_client({"access_token": "backend-token", "token_type": "Bearer"})
+        mock_client, _ = self._make_mock_client(
+            {"access_token": "backend-token", "token_type": "Bearer"}
+        )
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client) as mock_client_cls:
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ) as mock_client_cls,
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -287,11 +366,23 @@ class TestTokenExchangeStrategy:
         mock_upstream.token = "same-user-token"
 
         mock_client, _ = self._make_mock_client(
-            {"access_token": "backend-token", "token_type": "Bearer", "expires_in": 3600}
+            {
+                "access_token": "backend-token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
         )
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -309,6 +400,7 @@ class TestTokenExchangeStrategy:
     async def test_different_upstream_tokens_get_independent_exchanges(self):
         """Two get_token() calls with different upstream tokens → two POSTs, each caller
         receives only its own exchanged token."""
+
         # Make the exchange response depend on the subject_token in the POST body.
         def build_response(subject_token: str):
             resp = MagicMock()
@@ -334,7 +426,9 @@ class TestTokenExchangeStrategy:
         upstream_b = MagicMock()
         upstream_b.token = "user-B-token"
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -343,12 +437,18 @@ class TestTokenExchangeStrategy:
                 scope=None,
             )
 
-            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+            with patch(
+                "aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a
+            ):
                 a_token = await strategy.get_token()
-            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b):
+            with patch(
+                "aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b
+            ):
                 b_token = await strategy.get_token()
             # Now user A comes back — should hit the cache, not the IdP.
-            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+            with patch(
+                "aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a
+            ):
                 a_token_again = await strategy.get_token()
 
         # Per-subject isolation: A never gets B's token, B never gets A's.
@@ -366,10 +466,12 @@ class TestTokenExchangeStrategy:
         upstream_b = MagicMock()
         upstream_b.token = "token-B"
 
-        responses = iter([
-            {"access_token": "A-backend-token", "expires_in": 3600},
-            {"access_token": "B-backend-token", "expires_in": 3600},
-        ])
+        responses = iter(
+            [
+                {"access_token": "A-backend-token", "expires_in": 3600},
+                {"access_token": "B-backend-token", "expires_in": 3600},
+            ]
+        )
 
         async def post(*args, **kwargs):
             resp = MagicMock()
@@ -381,7 +483,9 @@ class TestTokenExchangeStrategy:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=post)
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -389,9 +493,13 @@ class TestTokenExchangeStrategy:
                 audience="backend-client-id",
                 scope=None,
             )
-            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a):
+            with patch(
+                "aas_mcp_server.backend_auth.get_access_token", return_value=upstream_a
+            ):
                 a_token = await strategy.get_token()
-            with patch("aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b):
+            with patch(
+                "aas_mcp_server.backend_auth.get_access_token", return_value=upstream_b
+            ):
                 b_token = await strategy.get_token()
 
         assert a_token == "A-backend-token"
@@ -405,10 +513,12 @@ class TestTokenExchangeStrategy:
         mock_upstream = MagicMock()
         mock_upstream.token = "user-token"
 
-        responses = iter([
-            {"access_token": "backend-token-1", "expires_in": 3600},
-            {"access_token": "backend-token-2", "expires_in": 3600},
-        ])
+        responses = iter(
+            [
+                {"access_token": "backend-token-1", "expires_in": 3600},
+                {"access_token": "backend-token-2", "expires_in": 3600},
+            ]
+        )
 
         async def post(*args, **kwargs):
             resp = MagicMock()
@@ -420,8 +530,16 @@ class TestTokenExchangeStrategy:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=post)
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -455,14 +573,25 @@ class TestTokenExchangeStrategy:
             resp = MagicMock()
             resp.raise_for_status = MagicMock()
             resp.headers = {"content-type": "application/json"}
-            resp.json.return_value = {"access_token": "coalesced-backend-token", "expires_in": 3600}
+            resp.json.return_value = {
+                "access_token": "coalesced-backend-token",
+                "expires_in": 3600,
+            }
             return resp
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=slow_post)
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = TokenExchangeStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="mcp-client-id",
@@ -479,6 +608,7 @@ class TestTokenExchangeStrategy:
 # ---------------------------------------------------------------------------
 # ClientCredentialsStrategy
 # ---------------------------------------------------------------------------
+
 
 class TestClientCredentialsStrategy:
     def _make_mock_client(self, json_response: dict, status_code: int = 200):
@@ -497,10 +627,16 @@ class TestClientCredentialsStrategy:
     async def test_fetches_token_from_endpoint(self):
         """POSTs client_credentials grant to the token endpoint and returns access_token."""
         mock_client, _ = self._make_mock_client(
-            {"access_token": "svc-token-xyz", "token_type": "Bearer", "expires_in": 3600}
+            {
+                "access_token": "svc-token-xyz",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }
         )
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="svc-client-id",
@@ -523,8 +659,15 @@ class TestClientCredentialsStrategy:
         )
 
         # Intentionally do NOT patch get_access_token — this strategy must not call it.
-        with patch("aas_mcp_server.backend_auth.get_access_token") as spy_get_access_token, \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token"
+            ) as spy_get_access_token,
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -543,7 +686,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "scoped-token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -562,7 +707,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -581,7 +728,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "aud-token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -600,7 +749,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -619,7 +770,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "cached-token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -639,7 +792,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "token-1", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -653,7 +808,8 @@ class TestClientCredentialsStrategy:
                 entry.expires_at = 0.0
             # Change what the mock will return on the next call so we can distinguish.
             mock_client.post.return_value.json.return_value = {
-                "access_token": "token-2", "expires_in": 3600,
+                "access_token": "token-2",
+                "expires_in": 3600,
             }
             second = await strategy.get_token()
 
@@ -668,7 +824,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "coalesced-token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -685,7 +843,9 @@ class TestClientCredentialsStrategy:
     async def test_defaults_expiry_when_response_omits_expires_in(self):
         """When the response has no `expires_in`, strategy still caches (using default lifetime)."""
         mock_client, _ = self._make_mock_client({"access_token": "no-expiry-token"})
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -711,13 +871,17 @@ class TestClientCredentialsStrategy:
         mock_response = MagicMock()
         mock_response.status_code = 401
         mock_response.raise_for_status = MagicMock(
-            side_effect=_httpx.HTTPStatusError("401", request=MagicMock(), response=mock_response)
+            side_effect=_httpx.HTTPStatusError(
+                "401", request=MagicMock(), response=mock_response
+            )
         )
         mock_response.json.return_value = {"error": "invalid_client"}
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -732,7 +896,9 @@ class TestClientCredentialsStrategy:
     async def test_raises_on_missing_access_token_in_response(self):
         """A 200 response without access_token raises RuntimeError."""
         mock_client, _ = self._make_mock_client({"token_type": "Bearer"})
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -752,11 +918,15 @@ class TestClientCredentialsStrategy:
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.headers = {"content-type": "text/html"}
-        mock_response.json.side_effect = _httpx.DecodingError("not json", request=MagicMock())
+        mock_response.json.side_effect = _httpx.DecodingError(
+            "not json", request=MagicMock()
+        )
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -773,9 +943,13 @@ class TestClientCredentialsStrategy:
         import httpx2 as _httpx
 
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=_httpx.RequestError("connection refused"))
+        mock_client.post = AsyncMock(
+            side_effect=_httpx.RequestError("connection refused")
+        )
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -792,7 +966,9 @@ class TestClientCredentialsStrategy:
         mock_client, _ = self._make_mock_client(
             {"access_token": "token", "expires_in": 3600}
         )
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client) as mock_cls:
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ) as mock_cls:
             strategy = ClientCredentialsStrategy(
                 token_endpoint="https://idp.example.com/oauth/token",
                 client_id="cid",
@@ -812,6 +988,7 @@ class TestClientCredentialsStrategy:
 # ---------------------------------------------------------------------------
 # ClientCredentialsStrategy.aclose()
 # ---------------------------------------------------------------------------
+
 
 class TestClientCredentialsStrategyClose:
     @pytest.mark.asyncio
@@ -855,6 +1032,7 @@ class TestClientCredentialsStrategyClose:
 # build_backend_token_provider factory
 # ---------------------------------------------------------------------------
 
+
 class TestBuildBackendTokenProvider:
     @patch.dict(os.environ, {}, clear=True)
     def test_returns_forward_strategy_when_no_config(self):
@@ -862,55 +1040,75 @@ class TestBuildBackendTokenProvider:
         provider = build_backend_token_provider()
         assert isinstance(provider, ForwardStrategy)
 
-    @patch.dict(os.environ, {ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_NONE}, clear=True)
+    @patch.dict(
+        os.environ, {ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_NONE}, clear=True
+    )
     def test_explicit_none_strategy(self):
         """BACKEND_AUTH_STRATEGY=none returns NoneStrategy."""
         provider = build_backend_token_provider()
         assert isinstance(provider, NoneStrategy)
 
-    @patch.dict(os.environ, {ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_FORWARD}, clear=True)
+    @patch.dict(
+        os.environ, {ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_FORWARD}, clear=True
+    )
     def test_explicit_forward_strategy(self):
         """BACKEND_AUTH_STRATEGY=forward returns ForwardStrategy."""
         provider = build_backend_token_provider()
         assert isinstance(provider, ForwardStrategy)
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        },
+        clear=True,
+    )
     def test_auto_selects_token_exchange_when_audience_set(self):
         """Auto-selects TokenExchangeStrategy when BACKEND_AUTH_AUDIENCE is set."""
         provider = build_backend_token_provider()
         assert isinstance(provider, TokenExchangeStrategy)
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_TOKEN_EXCHANGE,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_TOKEN_EXCHANGE,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        },
+        clear=True,
+    )
     def test_token_exchange_without_audience_raises(self):
         """token_exchange strategy without BACKEND_AUTH_AUDIENCE raises ValueError."""
         with pytest.raises(ValueError, match="BACKEND_AUTH_AUDIENCE"):
             build_backend_token_provider()
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: "invalid_strategy",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: "invalid_strategy",
+        },
+        clear=True,
+    )
     def test_invalid_strategy_raises(self):
         """Unknown strategy name raises ValueError."""
         with pytest.raises(ValueError, match="BACKEND_AUTH_STRATEGY"):
             build_backend_token_provider()
 
     @patch("aas_mcp_server.backend_auth.httpx2.get")
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-        ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+            ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
+        },
+        clear=True,
+    )
     def test_token_endpoint_discovered_from_issuer_when_not_explicit(self, mock_get):
         """When BACKEND_AUTH_TOKEN_ENDPOINT not set, token endpoint is discovered via OIDC metadata."""
         mock_get.return_value.status_code = 200
@@ -925,14 +1123,18 @@ class TestBuildBackendTokenProvider:
             "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
         )
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-        ENV_BACKEND_AUTH_CLIENT_ID: "override-client-id",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "override-secret",
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_BACKEND_AUTH_CLIENT_ID: "override-client-id",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "override-secret",
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        },
+        clear=True,
+    )
     def test_backend_client_id_overrides_oauth_client_id(self):
         """BACKEND_AUTH_CLIENT_ID overrides OAUTH_CLIENT_ID for token exchange."""
         provider = build_backend_token_provider()
@@ -940,12 +1142,16 @@ class TestBuildBackendTokenProvider:
         assert provider.client_id == "override-client-id"
         assert provider.client_secret == "override-secret"
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+        },
+        clear=True,
+    )
     def test_client_credentials_strategy_selected_explicitly(self):
         """BACKEND_AUTH_STRATEGY=client_credentials with creds builds ClientCredentialsStrategy."""
         provider = build_backend_token_provider()
@@ -956,14 +1162,18 @@ class TestBuildBackendTokenProvider:
         assert provider.scope is None
         assert provider.audience is None
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-        ENV_BACKEND_AUTH_SCOPE: "api.read",
-        ENV_BACKEND_AUTH_AUDIENCE: "https://api.example.com",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+            ENV_BACKEND_AUTH_SCOPE: "api.read",
+            ENV_BACKEND_AUTH_AUDIENCE: "https://api.example.com",
+        },
+        clear=True,
+    )
     def test_client_credentials_forwards_scope_and_audience(self):
         """Optional scope and audience env vars flow through into the strategy."""
         provider = build_backend_token_provider()
@@ -971,43 +1181,59 @@ class TestBuildBackendTokenProvider:
         assert provider.scope == "api.read"
         assert provider.audience == "https://api.example.com"
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+        },
+        clear=True,
+    )
     def test_client_credentials_missing_client_id_raises(self):
         """Missing client_id (no BACKEND_AUTH_CLIENT_ID nor OAUTH_CLIENT_ID) raises ValueError."""
         with pytest.raises(ValueError, match="client ID"):
             build_backend_token_provider()
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+        },
+        clear=True,
+    )
     def test_client_credentials_missing_client_secret_raises(self):
         """Missing client secret raises ValueError."""
         with pytest.raises(ValueError, match="client secret"):
             build_backend_token_provider()
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+        },
+        clear=True,
+    )
     def test_client_credentials_no_endpoint_or_issuer_raises(self):
         """Missing both BACKEND_AUTH_TOKEN_ENDPOINT and OAUTH_ISSUER_URL raises ValueError."""
         with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
             build_backend_token_provider()
 
     @patch("aas_mcp_server.backend_auth.httpx2.get")
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-        ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+            ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
+        },
+        clear=True,
+    )
     def test_client_credentials_uses_oidc_discovery_when_no_endpoint(self, mock_get):
         """When token endpoint isn't set, it's discovered via OIDC metadata (as for token_exchange)."""
         mock_get.return_value.raise_for_status = lambda: None
@@ -1018,12 +1244,16 @@ class TestBuildBackendTokenProvider:
         assert isinstance(provider, ClientCredentialsStrategy)
         assert provider.token_endpoint == "https://idp.example.com/oauth2/token"
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        },
+        clear=True,
+    )
     def test_audience_alone_does_not_select_client_credentials(self):
         """Setting BACKEND_AUTH_AUDIENCE without explicit strategy still routes to token_exchange."""
         provider = build_backend_token_provider()
@@ -1034,6 +1264,7 @@ class TestBuildBackendTokenProvider:
 # ---------------------------------------------------------------------------
 # TokenExchangeStrategy.aclose()
 # ---------------------------------------------------------------------------
+
 
 class TestTokenExchangeStrategyClose:
     @pytest.mark.asyncio
@@ -1077,6 +1308,7 @@ class TestTokenExchangeStrategyClose:
 # _discover_token_endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestDiscoverTokenEndpoint:
     @patch("aas_mcp_server.backend_auth.httpx2.get")
     def test_success_returns_token_endpoint(self, mock_get):
@@ -1096,7 +1328,9 @@ class TestDiscoverTokenEndpoint:
     def test_strips_trailing_slash_from_issuer(self, mock_get):
         """Trailing slash on issuer URL is normalised before constructing discovery URL."""
         mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
+        mock_get.return_value.json.return_value = {
+            "token_endpoint": "https://idp.example.com/token"
+        }
         _discover_token_endpoint("https://idp.example.com/")
         mock_get.assert_called_once_with(
             "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
@@ -1106,29 +1340,41 @@ class TestDiscoverTokenEndpoint:
     def test_strips_existing_openid_configuration_suffix(self, mock_get):
         """Issuer URL that already ends with /.well-known/openid-configuration is normalised."""
         mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
-        _discover_token_endpoint("https://idp.example.com/.well-known/openid-configuration")
+        mock_get.return_value.json.return_value = {
+            "token_endpoint": "https://idp.example.com/token"
+        }
+        _discover_token_endpoint(
+            "https://idp.example.com/.well-known/openid-configuration"
+        )
         mock_get.assert_called_once_with(
             "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
         )
 
     @patch("aas_mcp_server.backend_auth.httpx2.get")
-    def test_non_standard_path_ending_openid_configuration_not_corrupted(self, mock_get):
+    def test_non_standard_path_ending_openid_configuration_not_corrupted(
+        self, mock_get
+    ):
         """Issuer URL ending in /openid-configuration (without /.well-known) is handled correctly.
 
         Expected: /openid-configuration is stripped and /.well-known/openid-configuration appended,
         producing the correct discovery URL without double-appending or truncating.
         """
         mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json.return_value = {"token_endpoint": "https://idp.example.com/token"}
+        mock_get.return_value.json.return_value = {
+            "token_endpoint": "https://idp.example.com/token"
+        }
         _discover_token_endpoint("https://idp.example.com/auth/openid-configuration")
         called_url = mock_get.call_args[0][0]
-        assert called_url == "https://idp.example.com/auth/.well-known/openid-configuration"
+        assert (
+            called_url
+            == "https://idp.example.com/auth/.well-known/openid-configuration"
+        )
 
     @patch("aas_mcp_server.backend_auth.httpx2.get")
     def test_raises_on_http_status_error(self, mock_get):
         """Non-2xx HTTP response raises ValueError with actionable message."""
         import httpx2 as _httpx
+
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_get.return_value.raise_for_status.side_effect = _httpx.HTTPStatusError(
@@ -1141,6 +1387,7 @@ class TestDiscoverTokenEndpoint:
     def test_raises_on_request_error(self, mock_get):
         """Network / timeout error raises ValueError directing operator to explicit config."""
         import httpx2 as _httpx
+
         mock_get.side_effect = _httpx.RequestError("timeout")
         with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
             _discover_token_endpoint("https://idp.example.com")
@@ -1157,6 +1404,7 @@ class TestDiscoverTokenEndpoint:
 # ---------------------------------------------------------------------------
 # Endpoint sanitization for logs and error messages (#42)
 # ---------------------------------------------------------------------------
+
 
 class TestSanitizeEndpointForLogging:
     def test_plain_url_is_unchanged(self):
@@ -1186,13 +1434,17 @@ class TestSanitizeEndpointForLogging:
 
     def test_drops_query_and_fragment(self):
         assert (
-            _sanitize_endpoint_for_logging("https://idp.example.com/oauth/token?client_secret=s3cr3t#frag")
+            _sanitize_endpoint_for_logging(
+                "https://idp.example.com/oauth/token?client_secret=s3cr3t#frag"
+            )
             == "https://idp.example.com/oauth/token"
         )
 
     def test_drops_userinfo(self):
         assert (
-            _sanitize_endpoint_for_logging("https://user:pass@idp.example.com/oauth/token")
+            _sanitize_endpoint_for_logging(
+                "https://user:pass@idp.example.com/oauth/token"
+            )
             == "https://idp.example.com/oauth/token"
         )
 
@@ -1243,13 +1495,23 @@ class TestStrategiesDoNotLeakRawEndpoint:
         mock_response = MagicMock()
         mock_response.status_code = 400
         mock_response.raise_for_status = MagicMock(
-            side_effect=_httpx.HTTPStatusError("400", request=MagicMock(), response=mock_response)
+            side_effect=_httpx.HTTPStatusError(
+                "400", request=MagicMock(), response=mock_response
+            )
         )
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             strategy = self._token_exchange()
             with pytest.raises(RuntimeError) as exc_info:
                 await strategy.get_token()
@@ -1270,8 +1532,16 @@ class TestStrategiesDoNotLeakRawEndpoint:
         mock_client.post = AsyncMock(return_value=mock_response)
 
         caplog.set_level(logging.DEBUG, logger="aas_mcp_server.backend_auth")
-        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_upstream), \
-             patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with (
+            patch(
+                "aas_mcp_server.backend_auth.get_access_token",
+                return_value=mock_upstream,
+            ),
+            patch(
+                "aas_mcp_server.backend_auth.httpx2.AsyncClient",
+                return_value=mock_client,
+            ),
+        ):
             assert await self._token_exchange().get_token() == "backend-token"
 
         assert "s3cr3t" not in caplog.text
@@ -1282,27 +1552,38 @@ class TestStrategiesDoNotLeakRawEndpoint:
         import httpx2 as _httpx
 
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=_httpx.RequestError("connection refused"))
+        mock_client.post = AsyncMock(
+            side_effect=_httpx.RequestError("connection refused")
+        )
 
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             strategy = self._client_credentials()
             with pytest.raises(RuntimeError) as exc_info:
                 await strategy.get_token()
 
         assert "s3cr3t" not in str(exc_info.value)
-        assert f"BACKEND_AUTH_TOKEN_ENDPOINT ({self.SAFE_ENDPOINT})" in str(exc_info.value)
+        assert f"BACKEND_AUTH_TOKEN_ENDPOINT ({self.SAFE_ENDPOINT})" in str(
+            exc_info.value
+        )
         assert mock_client.post.await_args.args[0] == self.RAW_ENDPOINT
 
     @pytest.mark.asyncio
     async def test_client_credentials_debug_log_is_sanitized(self, caplog):
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"access_token": "svc-token", "expires_in": 3600}
+        mock_response.json.return_value = {
+            "access_token": "svc-token",
+            "expires_in": 3600,
+        }
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
         caplog.set_level(logging.DEBUG, logger="aas_mcp_server.backend_auth")
-        with patch("aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client):
+        with patch(
+            "aas_mcp_server.backend_auth.httpx2.AsyncClient", return_value=mock_client
+        ):
             assert await self._client_credentials().get_token() == "svc-token"
 
         assert "s3cr3t" not in caplog.text
@@ -1322,12 +1603,16 @@ class TestStrategiesDoNotLeakRawEndpoint:
 class TestFactoryLogsSanitizedEndpoint:
     RAW_IPV6_ENDPOINT = "https://[::1]:8080/oauth/token?client_secret=s3cr3t"
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
-        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+        },
+        clear=True,
+    )
     def test_client_credentials_info_log_brackets_ipv6_and_drops_query(self, caplog):
         caplog.set_level(logging.INFO, logger="aas_mcp_server.backend_auth")
         provider = build_backend_token_provider()
@@ -1336,12 +1621,16 @@ class TestFactoryLogsSanitizedEndpoint:
         assert "endpoint=https://[::1]:8080/oauth/token scope=" in caplog.text
         assert "s3cr3t" not in caplog.text
 
-    @patch.dict(os.environ, {
-        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
-        ENV_BACKEND_AUTH_CLIENT_ID: "mcp-cid",
-        ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-csec",
-    }, clear=True)
+    @patch.dict(
+        os.environ,
+        {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
+            ENV_BACKEND_AUTH_CLIENT_ID: "mcp-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-csec",
+        },
+        clear=True,
+    )
     def test_token_exchange_info_log_brackets_ipv6_and_drops_query(self, caplog):
         caplog.set_level(logging.INFO, logger="aas_mcp_server.backend_auth")
         provider = build_backend_token_provider()
@@ -1354,6 +1643,7 @@ class TestFactoryLogsSanitizedEndpoint:
 # ---------------------------------------------------------------------------
 # _KeyedTokenCache — shared caching helper used by both token-issuing strategies
 # ---------------------------------------------------------------------------
+
 
 class TestKeyedTokenCache:
     """Unit tests for the private _KeyedTokenCache helper.
@@ -1368,6 +1658,7 @@ class TestKeyedTokenCache:
         """Import the class lazily so import failure surfaces as a test failure,
         not a collection error that hides all other tests in the file."""
         from aas_mcp_server.backend_auth import _KeyedTokenCache  # type: ignore[attr-defined]
+
         return _KeyedTokenCache
 
     @pytest.mark.asyncio
@@ -1433,7 +1724,10 @@ class TestKeyedTokenCache:
         entry = cache._entries["k"]  # type: ignore[attr-defined]
         # The stored expiry is now+fallback (much larger than 0).
         import time as _time
-        assert entry.expires_at > _time.monotonic() + DEFAULT_TOKEN_LIFETIME_SECONDS - 60
+
+        assert (
+            entry.expires_at > _time.monotonic() + DEFAULT_TOKEN_LIFETIME_SECONDS - 60
+        )
 
     @pytest.mark.asyncio
     async def test_distinct_keys_are_isolated(self):
@@ -1447,12 +1741,22 @@ class TestKeyedTokenCache:
             async def fetch():
                 fetches.append(name)
                 return (f"tok-{name}", 3600)
+
             return fetch
 
-        assert await cache.get_or_fetch("a", await make_fetch("A"), label="test") == "tok-A"
-        assert await cache.get_or_fetch("b", await make_fetch("B"), label="test") == "tok-B"
+        assert (
+            await cache.get_or_fetch("a", await make_fetch("A"), label="test")
+            == "tok-A"
+        )
+        assert (
+            await cache.get_or_fetch("b", await make_fetch("B"), label="test")
+            == "tok-B"
+        )
         # Second call for A must return A's token, not B's.
-        assert await cache.get_or_fetch("a", await make_fetch("A"), label="test") == "tok-A"
+        assert (
+            await cache.get_or_fetch("a", await make_fetch("A"), label="test")
+            == "tok-A"
+        )
 
         assert fetches == ["A", "B"]  # A cached on second call, no refetch
 
@@ -1480,7 +1784,10 @@ class TestKeyedTokenCache:
         await started.wait()
 
         # Now launch 4 more that must wait behind the per-key lock.
-        others = [asyncio.create_task(cache.get_or_fetch("k", fetch, label="test")) for _ in range(4)]
+        others = [
+            asyncio.create_task(cache.get_or_fetch("k", fetch, label="test"))
+            for _ in range(4)
+        ]
         # Give the event loop a tick so `others` reach the lock.
         await asyncio.sleep(0)
 
@@ -1512,6 +1819,7 @@ class TestKeyedTokenCache:
                 async with lock:
                     in_flight -= 1
                 return (f"tok-{name}", 3600)
+
             return fetch
 
         a_fetch = await fetch_for("A")
@@ -1535,6 +1843,7 @@ class TestKeyedTokenCache:
         async def fetch_ok(val):
             async def fetch():
                 return (val, 3600)
+
             return fetch
 
         await cache.get_or_fetch("a", await fetch_ok("tok-a"), label="test")
@@ -1555,6 +1864,7 @@ class TestKeyedTokenCache:
         async def fetch_ok(val):
             async def fetch():
                 return (val, 3600)
+
             return fetch
 
         await cache.get_or_fetch("a", await fetch_ok("tok-a"), label="test")
@@ -1591,5 +1901,7 @@ class TestKeyedTokenCache:
         assert "k" not in cache._entries  # type: ignore[attr-defined]
 
         # Next call succeeds and populates the cache.
-        assert await cache.get_or_fetch("k", flaky_fetch, label="test") == "tok-recovered"
+        assert (
+            await cache.get_or_fetch("k", flaky_fetch, label="test") == "tok-recovered"
+        )
         assert "k" in cache._entries  # type: ignore[attr-defined]
