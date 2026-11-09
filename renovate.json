@@ -2,5 +2,17 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned aas-specs-api release used to generate the integration specs",
+      "managerFilePatterns": ["/^scripts/ci/prepare-integration-specs\\.sh$/"],
+      "matchStrings": [
+        "TAG=\"(?<currentValue>v[^\"]+)\"\\nCOMMIT=\"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "admin-shell-io/aas-specs-api"
+    }
   ]
 }
