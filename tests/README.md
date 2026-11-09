@@ -94,8 +94,10 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 4. **Docker Build** - Verifies Docker image builds and runs
 
 5. **Docker Startup Integration Test** - Verifies the built image boots
-   successfully for all four AAS components (`aas-repo`, `submodel-repo`,
-   `aas-registry`, `submodel-registry`) via a per-component matrix job.
+   successfully for all six AAS components (`aas-repo`, `submodel-repo`,
+   `aas-registry`, `submodel-registry`, `concept-description-repo`,
+   `aas-discovery`) via a
+   per-component matrix job.
    Each leg runs `scripts/ci/docker-startup-check.sh` which performs an MCP
    `initialize` handshake and a short uptime check.
 
@@ -106,32 +108,38 @@ The CI `integration-test` job is a thin wrapper around
 against a freshly built image:
 
 ```bash
+# Generate the official specs once (needs git, perl and npx)
+scripts/ci/prepare-integration-specs.sh
+
 # Build the image once
 docker build -t aas-mcp-server:test .
 
 # Run the check for any component
 scripts/ci/docker-startup-check.sh aas-repo \
   tests/fixtures/integration/config.yaml.template \
-  tests/fixtures/integration/aas-repo-official-spec.yaml
+  tests/fixtures/integration/specs/aas-repo-official-spec.yaml
 
-# Or loop over all four
-for c in aas-repo submodel-repo aas-registry submodel-registry; do
+# Or loop over all six
+for c in aas-repo submodel-repo aas-registry submodel-registry concept-description-repo aas-discovery; do
   scripts/ci/docker-startup-check.sh "$c" \
     tests/fixtures/integration/config.yaml.template \
-    "tests/fixtures/integration/${c}-official-spec.yaml"
+    "tests/fixtures/integration/specs/${c}-official-spec.yaml"
 done
 ```
 
 Environment variables:
 - `UPTIME_SECONDS` — how long the uptime phase waits (default `10`)
+- `HANDSHAKE_TIMEOUT` — max seconds to wait for the `tools/list` reply (default `60`)
 - `IMAGE_TAG` — image tag to test (default `aas-mcp-server:test`)
 
 Fixtures used by this check live in `tests/fixtures/integration/` and are
 independent from the unit-test fixtures next door. See
-[tests/fixtures/integration/README.md](fixtures/integration/README.md) for
-the chunking rule (the derived fixtures come from the external
-[aas-specs](https://github.com/admin-shell-io/aas-specs/tree/main/schemas/openapi)
-repo; `aas-repo` is hand-authored).
+[tests/fixtures/integration/README.md](fixtures/integration/README.md):
+they are the official specs from a pinned tag of
+[aas-specs-api](https://github.com/admin-shell-io/aas-specs-api), generated
+by `scripts/ci/prepare-integration-specs.sh` and not committed. The tests
+marked `integration` (`pytest tests/ -m integration`) use the same specs and
+are skipped locally until they have been generated.
 
 ## Test Fixtures
 

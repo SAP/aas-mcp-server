@@ -51,7 +51,14 @@ LOG_STEP_PREFIX_3 = "[3/3]"
 LOG_INDENT = "      "
 
 # Valid component names
-VALID_COMPONENTS = {"aas-repo", "submodel-repo", "aas-registry", "submodel-registry"}
+VALID_COMPONENTS = {
+    "aas-repo",
+    "submodel-repo",
+    "aas-registry",
+    "submodel-registry",
+    "concept-description-repo",
+    "aas-discovery",
+}
 
 
 def _resolve_spec_path(component: str, spec_path: Optional[str]) -> Path:
@@ -74,8 +81,8 @@ def _resolve_spec_path(component: str, spec_path: Optional[str]) -> Path:
 
     if not spec_path:
         raise ValueError(
-            "spec_path is required. Please provide the path to the OpenAPI specification file.\n"
-            "Download official AAS specs from: https://github.com/admin-shell-io/aas-specs"
+            f"spec_path is required. Please provide the path to the OpenAPI specification file.\n"
+            f"Official AAS specs: https://github.com/admin-shell-io/aas-specs-api (bundle them first, see README 'Setup')"
         )
 
     resolved_path = Path(spec_path)
@@ -146,7 +153,7 @@ def _apply_filters(spec: Dict[str, Any], filter_paths_list: Optional[List[str]],
     """Apply path filters with optional logging."""
     if not filter_paths_list:
         if verbose:
-            logger.info("\n[2/3] Skipping filtering (no filter paths specified)")
+            logger.info(f"\n{LOG_STEP_PREFIX_2} Skipping filtering (no filter paths specified)")
         return spec
 
     if verbose:
@@ -165,7 +172,7 @@ def _apply_overlay(spec: Dict[str, Any], overlay_path: Optional[Path],
     """Apply overlay with optional logging."""
     if not overlay_path or not overlay_path.exists():
         if verbose:
-            logger.info("\n[3/3] Skipping overlay (no overlay file)")
+            logger.info(f"\n{LOG_STEP_PREFIX_3} Skipping overlay (no overlay file)")
         return spec
 
     if verbose:
@@ -217,9 +224,10 @@ def generate_derived_spec(
     Generate a derived OpenAPI spec with filtering and overlay applied.
 
     Args:
-        component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry", "submodel-registry")
+        component: Component name (e.g., "aas-repo", "submodel-repo", "aas-registry",
+            "submodel-registry", "concept-description-repo", "aas-discovery")
         spec_path: Path to source OpenAPI spec file (required).
-                   Download official AAS specs from: https://github.com/admin-shell-io/aas-specs
+                   Official AAS specs: https://github.com/admin-shell-io/aas-specs-api (bundle them first, see README "Setup")
         filter_paths_list: List of path filters (e.g., ["/shells:get,post", "/shells/{aasIdentifier}:get"])
                           If None, uses environment variable for the component
         overlay_path: Path to overlay YAML file. If None, checks default location: overlays/{component}-overlay.yaml

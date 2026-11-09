@@ -52,8 +52,9 @@ To get started:
        submodel-repo:
          official_spec: /path/to/Submodel-Repository-spec.yaml
 
-  2. Download official AAS OpenAPI specs from:
-     https://github.com/admin-shell-io/aas-specs
+  2. Get the official AAS OpenAPI specs from a git tag of
+     https://github.com/admin-shell-io/aas-specs-api and bundle them into
+     self-contained files (see README "Setup")
 
   3. Provide the config file via:
      - Default location: /app/config/config.yaml (Docker)
@@ -64,7 +65,7 @@ See config.yaml.example in the repository for a complete template.
 
 For Docker users:
   docker run -v $(pwd)/config.yaml:/app/config/config.yaml \\
-             -v $(pwd)/specs:/app/specs \\
+             -v $(pwd)/specs:/app/config/specs \\
              -e AAS_COMPONENT=aas-repo \\
              -e AAS_BASE_URL=http://your-backend:8080 \\
              -i aas-mcp-server

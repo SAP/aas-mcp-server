@@ -98,9 +98,9 @@ def curate_openapi_spec(
     4. Limit parameter capping - prevent excessive pagination
 
     Wildcard support in allowlist:
-    - [*, /shells] - All methods for /shells path
-    - [get, *] - GET method for all paths
-    - [*, *] - All methods for all paths (use with caution!)
+    - ["*", /shells] - All methods for /shells path
+    - [get, "*"] - GET method for all paths
+    - ["*", "*"] - All methods for all paths (use with caution!)
 
     Args:
         spec: OpenAPI specification dictionary
@@ -119,6 +119,9 @@ def curate_openapi_spec(
     logger.info(f"=== Starting curation (enable_writes={enable_writes}) ===")
 
     # Use custom curation settings or fall back to defaults
+    uses_default_allowlist = (
+        not curation_settings or "allowlist" not in curation_settings
+    )
     raw_allowlist = (
         curation_settings.get("allowlist", DEFAULT_ALLOWLIST)
         if curation_settings
@@ -147,6 +150,9 @@ def curate_openapi_spec(
     logger.debug(f"Allowlist has {len(allowlist)} entries: {allowlist}")
     logger.debug(f"Write operations enabled: {enable_writes}")
 
+    filtered_by_allowlist = 0
+    filtered_by_write_protection = 0
+
     for path, path_item in paths.items():
         new_item: Dict[str, Any] = {}
         for method, op in (path_item or {}).items():
@@ -157,11 +163,13 @@ def curate_openapi_spec(
             # 1) Allowlist filter (keeps tool surface stable, supports wildcards)
             if not _matches_allowlist_pattern(m, path, allowlist):
                 logger.debug(f"Filtered out by allowlist: {m.upper()} {path}")
+                filtered_by_allowlist += 1
                 continue
 
             # 2) Readonly-by-default safety gate
             if (m in WRITE_METHODS) and not enable_writes:
                 logger.debug(f"Filtered out by write protection: {m.upper()} {path}")
+                filtered_by_write_protection += 1
                 continue
 
             logger.debug(f"✓ Allowed: {m.upper()} {path}")
@@ -194,7 +202,50 @@ def curate_openapi_spec(
             new_paths[path] = new_item
 
     out[OPENAPI_KEY_PATHS] = new_paths
+
+    if paths and not new_paths:
+        _warn_no_operations_left(
+            filtered_by_allowlist,
+            filtered_by_write_protection,
+            uses_default_allowlist,
+            logger,
+        )
+
     return out
+
+
+def _warn_no_operations_left(
+    filtered_by_allowlist: int,
+    filtered_by_write_protection: int,
+    uses_default_allowlist: bool,
+    logger: logging.Logger,
+) -> None:
+    """Warn that curation removed every operation, so the server has no tools.
+
+    Without this, a component whose spec does not contain the default
+    allowlist entry (GET /shells) starts with an empty tool list and only
+    DEBUG logs explain why.
+    """
+    if uses_default_allowlist:
+        hint = (
+            "No 'curation.allowlist' is configured for this component, so the "
+            "default allowlist (GET /shells) is used. Add a 'curation.allowlist' "
+            'to the component in config.yaml, e.g. [get, "*"].'
+        )
+    else:
+        hint = "Check that 'curation.allowlist' matches the paths in the spec."
+    if filtered_by_write_protection:
+        hint += (
+            " Allowlisted write operations are only exposed with --enable-writes "
+            "(or AAS_MCP_ENABLE_WRITES=1)."
+        )
+    logger.warning(
+        "Curation left no operations, so this MCP server exposes no tools "
+        "(%d filtered by the allowlist, %d by write protection). %s",
+        filtered_by_allowlist,
+        filtered_by_write_protection,
+        hint,
+    )
 
 
 def _cap_limit_in_parameter_list(params: Any, max_limit: int) -> list:

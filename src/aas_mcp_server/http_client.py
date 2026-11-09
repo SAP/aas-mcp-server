@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import re
 from typing import AsyncGenerator
 from urllib.parse import urlparse
 
@@ -52,7 +53,23 @@ AUTH_BEARER_FORMAT = "Bearer {token}"
 
 # Allowed URL schemes for AAS backend
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
-_RESERVED_CONFIGURED_HEADERS = frozenset({HEADER_ACCEPT.lower(), HEADER_AUTHORIZATION.lower()})
+_RESERVED_CONFIGURED_HEADERS = frozenset(
+    {HEADER_ACCEPT.lower(), HEADER_AUTHORIZATION.lower()}
+)
+
+# RFC 7230 §3.2 token and field-value syntax.
+# Header *names* are tokens: visible ASCII minus delimiters.
+# Header *values*: httpx2 (the HTTP client used here) encodes header values as
+# ASCII, so only \x21-\x7f are usable in practice even though RFC 7230 also
+# permits obs-text (\x80-\xff).  Using \s to exclude bad chars is insufficient
+# because Python's \s only matches ASCII whitespace, leaving SOH (\x01), ESC
+# (\x1b), and other C0 controls unchecked.  The pattern below uses an explicit
+# allowlist of visible ASCII + interior SP/HTAB — matching exactly what httpx2
+# will accept without raising UnicodeEncodeError.
+# Derived from h11's field_name/field_value regexes — the de-facto RFC 7230
+# reference in Python's HTTP stack (h11 is a transitive dep via httpcore).
+_HEADER_NAME_RE = re.compile(r"[-!#$%&'*+.^_`|~0-9a-zA-Z]+")
+_HEADER_VALUE_RE = re.compile(r"([\x21-\x7f]+([ \t]+[\x21-\x7f]+)*)?")
 
 # Link-local ranges used by cloud metadata services.
 # These are the only IPs that pose a genuine SSRF risk when present as a
@@ -86,9 +103,20 @@ def _configured_headers() -> dict[str, str]:
         )
 
     for name, value in headers.items():
-        if not isinstance(name, str) or not isinstance(value, str):
+        if not isinstance(value, str):
             raise ValueError(
-                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header names and values must be strings."
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: header values must be strings."
+            )
+        if not _HEADER_NAME_RE.fullmatch(name):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: {name!r} is not a valid HTTP header name "
+                f"(RFC 7230 token characters only — no spaces, control characters, or delimiters)."
+            )
+        if not _HEADER_VALUE_RE.fullmatch(value):
+            raise ValueError(
+                f"Invalid value for {ENV_AAS_HTTP_HEADERS}: value for {name!r} contains illegal characters "
+                f"(only visible ASCII, obs-text \\x80-\\xff, and interior SP/HTAB are permitted "
+                f"in HTTP header values — C0 controls, DEL, CR, LF, and NUL are not)."
             )
         if name.lower() in _RESERVED_CONFIGURED_HEADERS:
             raise ValueError(
@@ -238,7 +266,9 @@ class BearerTokenAuth(httpx2.Auth):
         provider: BackendTokenProvider | None = None,
         forward_headers: frozenset[str] = frozenset(),
     ) -> None:
-        self._provider: BackendTokenProvider = provider if provider is not None else ForwardStrategy()
+        self._provider: BackendTokenProvider = (
+            provider if provider is not None else ForwardStrategy()
+        )
         self._forward_headers = forward_headers
 
     async def async_auth_flow(
@@ -256,7 +286,9 @@ class BearerTokenAuth(httpx2.Auth):
                 type(self._provider).__name__,
                 len(token_str),
             )
-            request.headers[HEADER_AUTHORIZATION] = AUTH_BEARER_FORMAT.format(token=token_str)
+            request.headers[HEADER_AUTHORIZATION] = AUTH_BEARER_FORMAT.format(
+                token=token_str
+            )
         else:
             logger.debug(
                 "No backend token from %s — no Authorization header added",
@@ -302,13 +334,15 @@ def build_async_client(
             f"Value must be a positive finite number in seconds (default: {DEFAULT_HTTP_TIMEOUT})."
         )
 
-    headers = {HEADER_ACCEPT: CONTENT_TYPE_JSON, **_configured_headers()}
+    headers = {**_configured_headers(), HEADER_ACCEPT: CONTENT_TYPE_JSON}
     forward_headers = _configured_forward_headers()
 
     return httpx2.AsyncClient(
         base_url=base_url,
         headers=headers,
-        auth=BearerTokenAuth(provider=backend_token_provider, forward_headers=forward_headers),
+        auth=BearerTokenAuth(
+            provider=backend_token_provider, forward_headers=forward_headers
+        ),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
     )

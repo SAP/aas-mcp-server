@@ -323,6 +323,90 @@ class TestCurateOpenApiSpec:
         )
 
 
+class TestEmptyCurationWarning:
+    """Curation that removes every operation must not fail silently."""
+
+    SUBMODEL_SPEC = {
+        OPENAPI_KEY_PATHS: {
+            "/submodels": {
+                HTTP_METHOD_GET: {OPENAPI_KEY_OPERATION_ID: "GetAllSubmodels"},
+                HTTP_METHOD_POST: {OPENAPI_KEY_OPERATION_ID: "PostSubmodel"},
+            }
+        }
+    }
+
+    def _warnings(self, caplog):
+        return [r for r in caplog.records if r.levelname == "WARNING"]
+
+    def test_warns_when_default_allowlist_matches_nothing(self, caplog):
+        """A non-aas-repo spec without curation settings yields no tools."""
+        caplog.set_level("WARNING", logger="aas_mcp_server.tool_curation")
+
+        result = curate_openapi_spec(self.SUBMODEL_SPEC, enable_writes=False)
+
+        assert result[OPENAPI_KEY_PATHS] == {}
+        warnings = self._warnings(caplog)
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "exposes no tools" in message
+        assert "2 filtered by the allowlist" in message
+        assert "default allowlist (GET /shells)" in message
+        assert "--enable-writes" not in message
+
+    def test_warns_when_only_write_operations_are_allowlisted(self, caplog):
+        caplog.set_level("WARNING", logger="aas_mcp_server.tool_curation")
+
+        curate_openapi_spec(
+            self.SUBMODEL_SPEC,
+            enable_writes=False,
+            curation_settings={"allowlist": [[HTTP_METHOD_POST, "/submodels"]]},
+        )
+
+        message = self._warnings(caplog)[0].getMessage()
+        assert "1 filtered by the allowlist, 1 by write protection" in message
+        assert "--enable-writes" in message
+
+        caplog.clear()
+        curate_openapi_spec(
+            self.SUBMODEL_SPEC,
+            enable_writes=False,
+            curation_settings={"allowlist": [["*", "/submodels"]]},
+        )
+        assert self._warnings(caplog) == []
+
+    def test_hints_enable_writes_when_writes_are_the_only_blocker(self, caplog):
+        caplog.set_level("WARNING", logger="aas_mcp_server.tool_curation")
+        spec = {
+            OPENAPI_KEY_PATHS: {
+                "/submodels": {
+                    HTTP_METHOD_POST: {OPENAPI_KEY_OPERATION_ID: "PostSubmodel"}
+                }
+            }
+        }
+
+        curate_openapi_spec(
+            spec,
+            enable_writes=False,
+            curation_settings={"allowlist": [[HTTP_METHOD_POST, "/submodels"]]},
+        )
+
+        message = self._warnings(caplog)[0].getMessage()
+        assert "0 filtered by the allowlist, 1 by write protection" in message
+        assert "--enable-writes" in message
+
+    def test_no_warning_when_tools_remain_or_spec_is_empty(self, caplog):
+        caplog.set_level("WARNING", logger="aas_mcp_server.tool_curation")
+
+        curate_openapi_spec(
+            self.SUBMODEL_SPEC,
+            enable_writes=False,
+            curation_settings={"allowlist": [[HTTP_METHOD_GET, "*"]]},
+        )
+        curate_openapi_spec({OPENAPI_KEY_PATHS: {}}, enable_writes=False)
+
+        assert self._warnings(caplog) == []
+
+
 class TestCapLimitParameter:
     """Tests for _cap_limit_parameter helper function."""
 

@@ -75,24 +75,26 @@ ENV_AAS_FORWARD_HEADERS = "AAS_FORWARD_HEADERS"
 
 # Inbound HTTP header forwarding
 # Keep these aligned with FastMCP's get_http_headers() exclusion set.
-FASTMCP_EXCLUDED_HEADERS = frozenset({
-    "host",
-    "content-length",
-    "content-type",
-    "connection",
-    "transfer-encoding",
-    "upgrade",
-    "te",
-    "keep-alive",
-    "expect",
-    "accept",
-    "authorization",
-    "cookie",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "proxy-connection",
-    "mcp-session-id",
-})
+FASTMCP_EXCLUDED_HEADERS = frozenset(
+    {
+        "host",
+        "content-length",
+        "content-type",
+        "connection",
+        "transfer-encoding",
+        "upgrade",
+        "te",
+        "keep-alive",
+        "expect",
+        "accept",
+        "authorization",
+        "cookie",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "proxy-connection",
+        "mcp-session-id",
+    }
+)
 FORWARDED_HEADER_DENYLIST = frozenset({"forwarded", "trailer", "x-real-ip"})
 FORWARDED_HEADER_PROXY_PREFIX = "x-forwarded-"
 
@@ -121,12 +123,14 @@ BACKEND_STRATEGY_FORWARD = "forward"
 BACKEND_STRATEGY_TOKEN_EXCHANGE = "token_exchange"
 BACKEND_STRATEGY_CLIENT_CREDENTIALS = "client_credentials"
 BACKEND_STRATEGY_NONE = "none"
-VALID_BACKEND_STRATEGIES = frozenset({
-    BACKEND_STRATEGY_FORWARD,
-    BACKEND_STRATEGY_TOKEN_EXCHANGE,
-    BACKEND_STRATEGY_CLIENT_CREDENTIALS,
-    BACKEND_STRATEGY_NONE,
-})
+VALID_BACKEND_STRATEGIES = frozenset(
+    {
+        BACKEND_STRATEGY_FORWARD,
+        BACKEND_STRATEGY_TOKEN_EXCHANGE,
+        BACKEND_STRATEGY_CLIENT_CREDENTIALS,
+        BACKEND_STRATEGY_NONE,
+    }
+)
 
 # OAuth grant types
 OAUTH_GRANT_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
@@ -170,4 +174,6 @@ COMPONENT_FILTER_ENV_VARS = {
     "submodel-repo": "SUBMODEL_REPO_FILTER_PATHS",
     "aas-registry": "AAS_REGISTRY_FILTER_PATHS",
     "submodel-registry": "SUBMODEL_REGISTRY_FILTER_PATHS",
+    "concept-description-repo": "CONCEPT_DESCRIPTION_REPO_FILTER_PATHS",
+    "aas-discovery": "AAS_DISCOVERY_FILTER_PATHS",
 }

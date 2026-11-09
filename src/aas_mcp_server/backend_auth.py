@@ -387,7 +387,11 @@ class TokenExchangeStrategy:
         exchanged_token: str = payload["access_token"]
         expires_in_raw = payload.get("expires_in")
         try:
-            expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
+            expires_in = (
+                int(expires_in_raw)
+                if expires_in_raw is not None
+                else DEFAULT_TOKEN_LIFETIME_SECONDS
+            )
         except (TypeError, ValueError):
             expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
         if expires_in <= 0:
@@ -531,7 +535,11 @@ class ClientCredentialsStrategy:
         access_token: str = payload["access_token"]
         expires_in_raw = payload.get("expires_in")
         try:
-            expires_in = int(expires_in_raw) if expires_in_raw is not None else DEFAULT_TOKEN_LIFETIME_SECONDS
+            expires_in = (
+                int(expires_in_raw)
+                if expires_in_raw is not None
+                else DEFAULT_TOKEN_LIFETIME_SECONDS
+            )
         except (TypeError, ValueError):
             expires_in = DEFAULT_TOKEN_LIFETIME_SECONDS
         if expires_in <= 0:
@@ -641,7 +649,9 @@ def build_backend_token_provider() -> BackendTokenProvider:
 
     if strategy_name == BACKEND_STRATEGY_CLIENT_CREDENTIALS:
         # Token endpoint: explicit override > OIDC discovery from issuer
-        cc_token_endpoint = os.getenv(ENV_BACKEND_AUTH_TOKEN_ENDPOINT, "").strip() or None
+        cc_token_endpoint = (
+            os.getenv(ENV_BACKEND_AUTH_TOKEN_ENDPOINT, "").strip() or None
+        )
         if not cc_token_endpoint:
             cc_issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL, "").strip() or None
             if not cc_issuer_url:

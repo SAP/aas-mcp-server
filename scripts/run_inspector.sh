@@ -23,7 +23,8 @@ set -euo pipefail
 #
 # Environment variables:
 #   AAS_COMPONENT       - Component to test (default: aas-repo)
-#                         Options: aas-repo, submodel-repo, aas-registry, submodel-registry
+#                         Options: aas-repo, submodel-repo, aas-registry, submodel-registry,
+#                                  concept-description-repo, aas-discovery
 #   AAS_BASE_URL        - Backend AAS server URL (default: http://localhost:8080)
 #   CONFIG_PATH         - Path to config.yaml (default: config.yaml in current directory)
 #   AAS_MCP_ENABLE_WRITES - Set to "1" to enable write operations (default: read-only)
