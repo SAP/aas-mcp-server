@@ -15,14 +15,16 @@
 #      the same tag (no-op for v3.2.0, which references local files already)
 #   3. `redocly bundle` moves all external $refs into `components`
 #
-# To move to a new upstream release, update TAG and COMMIT in a dedicated change
-# and adjust the expected tools in tests/test_component_fixtures.py.
+# Renovate opens a dedicated PR for each new upstream release and updates TAG and
+# COMMIT there (see renovate.json). On that PR, adjust the expected tools in
+# tests/test_component_fixtures.py and the version in the docs.
 #
 # Usage: scripts/ci/prepare-integration-specs.sh
 # Needs git, perl and npx (Node.js). Works with bash 3.2 (macOS).
 
 set -euo pipefail
 
+# Renovate matches these two lines as one block: keep them adjacent and in this order.
 TAG="v3.2.0"
 COMMIT="f136ba1465e4c6b5b25444e0609d4de8f7429044"
 REDOCLY="@redocly/cli@1.25.0"
