@@ -34,11 +34,12 @@ import math
 import os
 from contextlib import asynccontextmanager
 from functools import partial
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import OIDCProxy
 from fastmcp.server.auth.jwt_issuer import derive_jwt_key
+from fastmcp.server.middleware import Middleware
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
 from key_value.aio.protocols.key_value import AsyncKeyValueProtocol
 from key_value.aio.stores.memory import MemoryStore
@@ -52,7 +53,9 @@ from .backend_auth import BackendTokenProvider, build_backend_token_provider
 from .http_client import build_async_client
 from .tool_curation import curate_openapi_spec, prune_unused_schemas
 from .logging import configure_logging
+from .audit import AuditMiddleware, ToolOperationIndex
 from .constants import (
+    DEFAULT_AUDIT_LOG_ENABLED,
     DEFAULT_LOG_LEVEL,
     DEFAULT_RATE_LIMIT_PER_MINUTE,
     DEFAULT_VALIDATE_OUTPUT,
@@ -70,6 +73,7 @@ from .constants import (
     ENV_OAUTH_SESSION_STORE_URL,
     ENV_MCP_RATE_LIMIT_PER_MINUTE,
     ENV_AAS_VALIDATE_OUTPUT,
+    ENV_AUDIT_LOG_ENABLED,
     OAUTH_SCOPE_OPENID,
 )
 
@@ -465,6 +469,28 @@ def build_mcp_server(
         burst_capacity=rate_limit,
     )
 
+    middleware: list[Middleware] = [rate_limiter]
+    operation_index: ToolOperationIndex | None = None
+
+    # Audit logging (opt-in, issue #132). It is placed first so that requests
+    # rejected by the rate limiter are recorded as "denied" too.
+    if _parse_bool(ENV_AUDIT_LOG_ENABLED, DEFAULT_AUDIT_LOG_ENABLED):
+        operation_index = ToolOperationIndex()
+        middleware.insert(
+            0,
+            AuditMiddleware(
+                component_name=component_config.component_name,
+                operation_index=operation_index,
+                transport=transport,
+            ),
+        )
+
+    # The audit index learns each generated tool's backend operation through
+    # FastMCP's component hook; only passed when auditing is on.
+    component_fn_kwargs: dict[str, Any] = (
+        {"mcp_component_fn": operation_index.record} if operation_index else {}
+    )
+
     # Generate MCP server from OpenAPI.
     # A detailed output schema lets FastMCP validate every backend response, but
     # deeply nested AAS models can make that schema costly for MCP clients to
@@ -483,10 +509,11 @@ def build_mcp_server(
         client=client,
         name=SERVER_NAME_FORMAT.format(component_name=component_config.component_name),
         auth=auth_provider,
-        middleware=[rate_limiter],
+        middleware=middleware,
         mask_error_details=True,
         validate_output=validate_output,
         lifespan=partial(_provider_lifespan, provider=backend_token_provider),
+        **component_fn_kwargs,
     )
 
     return mcp
