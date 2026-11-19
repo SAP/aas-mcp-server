@@ -46,6 +46,11 @@ dependencies = [
 [project.optional-dependencies]
 redis = ["redis>=5.0"]
 postgresql = ["asyncpg>=0.29"]
+# OpenTelemetry tracing (OTLP over HTTP). FastMCP already depends on opentelemetry-api.
+otel = [
+    "opentelemetry-sdk>=1.39",
+    "opentelemetry-exporter-otlp-proto-http>=1.39",
+]
 
 [project.urls]
 Homepage = "https://github.com/SAP/aas-mcp-server"
