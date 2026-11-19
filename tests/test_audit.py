@@ -343,3 +343,25 @@ async def test_wrapped_exception_reports_root_cause_type():
     [event] = _events(stream)
     assert event["error_type"] == "ConnectionRefusedError"
     assert "10.0.0.5" not in stream.getvalue()
+
+
+def test_index_ignores_non_tool_components():
+    index = ToolOperationIndex()
+    route = SimpleNamespace(method="GET", path="/shells", parameters=[])
+    index.record(route, SimpleNamespace(name="a-resource"))
+    assert index.get("a-resource") is None
+
+
+@pytest.mark.asyncio
+async def test_identity_lookup_failure_is_anonymous(monkeypatch):
+    def no_context():
+        raise RuntimeError("no active request")
+
+    monkeypatch.setattr(audit, "get_access_token", no_context)
+    stream = io.StringIO()
+    await _call(_server(stream), "GetAllShells")
+
+    [event] = _events(stream)
+    assert event["subject"] is None
+    assert event["source"] is None
+    assert event["outcome"] == "success"

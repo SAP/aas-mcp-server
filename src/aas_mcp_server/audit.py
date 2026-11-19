@@ -150,12 +150,6 @@ def _classify_exception(exc: BaseException) -> tuple[str, dict[str, Any]]:
     return OUTCOME_ERROR, {"error_type": type(chain[-1]).__name__}
 
 
-# Marks an exception already written by on_call_tool, so the outer on_request
-# hook does not log the same call twice.
-_AUDITED_ATTR = "_aas_mcp_audited"
-MCP_METHOD_TOOLS_CALL = "tools/call"
-
-
 class AuditMiddleware(Middleware):
     """Emit one structured audit event per MCP tool call."""
 
@@ -207,32 +201,6 @@ class AuditMiddleware(Middleware):
             "trace_id": None,
         }
 
-    async def on_request(self, context: MiddlewareContext, call_next: CallNext) -> Any:
-        """Record tool calls rejected before they reach the tool layer.
-
-        FastMCP runs request-level middleware such as ``RateLimitingMiddleware``
-        in an outer pass, so a rate-limited call never reaches
-        :meth:`on_call_tool`. Those rejections are recorded here.
-        """
-        started = time.perf_counter()
-        try:
-            return await call_next(context)
-        except Exception as exc:
-            if context.method == MCP_METHOD_TOOLS_CALL and not getattr(
-                exc, _AUDITED_ATTR, False
-            ):
-                message = context.message
-                event = self._base_event(
-                    getattr(message, "name", None) or "",
-                    getattr(message, "arguments", None),
-                )
-                outcome, extra = _classify_exception(exc)
-                event.update(extra)
-                event["outcome"] = outcome
-                event["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
-                self._emit(event)
-            raise
-
     async def on_call_tool(
         self,
         context: MiddlewareContext[mt.CallToolRequestParams],
@@ -249,10 +217,6 @@ class AuditMiddleware(Middleware):
             event["outcome"] = outcome
             event["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
             self._emit(event)
-            try:
-                setattr(exc, _AUDITED_ATTR, True)
-            except AttributeError:  # pragma: no cover - exotic exception types
-                pass
             raise
         event["outcome"] = OUTCOME_SUCCESS
         event["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
