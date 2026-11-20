@@ -343,6 +343,7 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 | `OAUTH_REQUIRED_SCOPES` | Optional | Comma-separated scopes requested from the IdP during the PKCE flow, e.g. `aas:read,aas:write`. |
 | `OAUTH_SESSION_STORE_URL` | Optional | External store for OAuth session state. Supports `redis://`, `rediss://`, `postgresql://`. Defaults to in-memory (state lost on restart). |
 | `MCP_RATE_LIMIT_PER_MINUTE` | Optional | Max requests per client per minute. Default: 60. |
+| `AUDIT_LOG_ENABLED` | Optional | Emit a structured JSON audit event per tool call (see [Audit Logging](#audit-logging)). Default: `false`. |
 | `AAS_VALIDATE_OUTPUT` | Optional | Validate tool outputs against generated OpenAPI schemas. Default: `true`; set to `false` to advertise a permissive output schema and avoid validation overhead for large nested AAS responses. |
 
 ### How it works
@@ -350,6 +351,36 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 The server acts as an OAuth 2.1 Authorization Server via FastMCP's `OIDCProxy`. It exposes a standard PKCE flow that proxies to your upstream IdP. MCP clients (Claude CLI, OpenCode, etc.) register via Dynamic Client Registration and complete a browser-based PKCE flow automatically.
 
 The validated Bearer token is forwarded to the AAS backend on every outbound request. Set `BACKEND_AUTH_AUDIENCE` if the backend requires a different token audience (token exchange via RFC 8693).
+
+## Audit Logging
+
+Set `AUDIT_LOG_ENABLED=true` to record every MCP tool call as one JSON object per line. Audit logging is off by default and adds nothing when unset.
+
+Events are plain JSON lines, so any collector (Fluentd, Vector, Loki, CloudWatch, `docker logs`, ...) can ingest them. On HTTP transports they are written to **stdout**. On the `stdio` transport, stdout carries the MCP protocol, so they are written to **stderr** instead.
+
+```json
+{"event":"tool_call","timestamp":"2026-11-19T10:15:02.481+00:00","component":"aas-repo","tool":"PutAssetAdministrationShellById","operation":"PUT /shells/{aasIdentifier}","access":"write","resource_id":{"aasIdentifier":"aHR0cHM6Ly9leGFtcGxlLmNvbS9hYXMvMQ"},"subject":"user-123","source":"mcp-client-id","trace_id":null,"outcome":"success","duration_ms":41.7}
+```
+
+| Field | Description |
+|-------|-------------|
+| `event` | Always `tool_call`. |
+| `timestamp` | UTC, ISO 8601 with milliseconds. |
+| `component` | Component this server exposes (e.g. `aas-repo`). |
+| `tool` | MCP tool name the client called. |
+| `operation` | Backend operation as `METHOD /path/template`. Placeholders are not filled in. `null` for tools outside the curated surface. |
+| `access` | `read`, or `write` for POST/PUT/PATCH/DELETE. |
+| `resource_id` | Path identifiers of the call (e.g. `aasIdentifier`, `submodelIdentifier`), or `null`. |
+| `subject` | `sub` claim of the caller's access token, or `null` without OAuth. |
+| `source` | OAuth client id of the MCP client, or `null`. |
+| `trace_id` | Reserved for OpenTelemetry correlation; currently `null`. |
+| `outcome` | `success`, `denied` (rate limited, tool not exposed, or backend 401/403), or `error`. |
+| `duration_ms` | Time spent handling the call. |
+| `status_code` | Backend HTTP status, present when the backend returned an error. |
+| `reason` | `RateLimitError` or `NotFoundError`, present for denials that never reached the backend. |
+| `error_type` | Exception class name for other errors. |
+
+Events never contain request or response bodies, query values, token values or error messages.
 
 ## Supported Components
 
