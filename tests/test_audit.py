@@ -18,14 +18,20 @@ import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import aas_mcp_server.audit as audit
 from aas_mcp_server.audit import AuditMiddleware, ToolOperationIndex
 from aas_mcp_server.constants import ENV_AUDIT_LOG_ENABLED
 from aas_mcp_server.server import build_mcp_server
+from aas_mcp_server.tracing import TracedAsyncClient
 
 AAS_ID = "aHR0cHM6Ly9leGFtcGxlLmNvbS9hYXMvMQ"
 SECRET_BODY_VALUE = "do-not-log-this-body-value"
+CLIENT_TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 
 SPEC = {
     "openapi": "3.0.3",
@@ -365,3 +371,110 @@ async def test_identity_lookup_failure_is_anonymous(monkeypatch):
     assert event["subject"] is None
     assert event["source"] is None
     assert event["outcome"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# Trace correlation with OpenTelemetry (#133)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def spans(monkeypatch):
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    # FastMCP and the audit middleware look up the global provider.
+    monkeypatch.setattr(trace, "_TRACER_PROVIDER", provider)
+    yield provider, exporter
+    provider.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("no_identity")
+class TestTraceCorrelation:
+    async def test_trace_id_matches_tool_span_and_backend_traceparent(self, spans):
+        _, exporter = spans
+        sent_traceparents: list[str] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            sent_traceparents.append(request.headers["traceparent"])
+            return httpx2.Response(200, json={"id": "x"})
+
+        stream = io.StringIO()
+        index = ToolOperationIndex()
+        server = FastMCP.from_openapi(
+            openapi_spec=SPEC,
+            client=TracedAsyncClient(
+                base_url="http://backend.invalid",
+                transport=httpx2.MockTransport(handler),
+            ),
+            middleware=[
+                AuditMiddleware(
+                    component_name="aas-repo",
+                    operation_index=index,
+                    transport="http",
+                    stream_factory=lambda: stream,
+                )
+            ],
+            mcp_component_fn=index.record,
+        )
+
+        await _call(server, "GetShell", {"aasIdentifier": AAS_ID})
+
+        [event] = _events(stream)
+        tool_span = next(
+            s for s in exporter.get_finished_spans() if s.name == "tools/call GetShell"
+        )
+        expected = format(tool_span.context.trace_id, "032x")
+        assert event["trace_id"] == expected
+        assert sent_traceparents[0].split("-")[1] == expected
+
+    async def test_trace_id_on_failed_call(self, spans):
+        _, exporter = spans
+        stream = io.StringIO()
+        with pytest.raises(ToolError):
+            await _call(
+                _server(stream, status=500), "GetShell", {"aasIdentifier": AAS_ID}
+            )
+
+        [event] = _events(stream)
+        assert event["outcome"] == "error"
+        tool_span = next(
+            s for s in exporter.get_finished_spans() if s.name == "tools/call GetShell"
+        )
+        assert event["trace_id"] == format(tool_span.context.trace_id, "032x")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("no_identity")
+async def test_caller_trace_context_is_used_without_sdk():
+    """Tracing off: the caller's trace context (sent as traceparent in _meta) correlates."""
+    # The in-process Client injects the active context into _meta itself, so the
+    # caller's trace is set as the active span rather than passed as raw meta.
+    caller = trace.NonRecordingSpan(
+        trace.SpanContext(
+            trace_id=int(CLIENT_TRACE_ID, 16),
+            span_id=0x00F067AA0BA902B7,
+            is_remote=True,
+            trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
+        )
+    )
+    stream = io.StringIO()
+    with trace.use_span(caller):
+        await _call(_server(stream), "GetShell", {"aasIdentifier": AAS_ID})
+
+    [event] = _events(stream)
+    assert event["trace_id"] == CLIENT_TRACE_ID
+
+
+def test_current_trace_id_without_active_span_is_none():
+    assert audit._current_trace_id() is None
+
+
+def test_current_trace_id_inside_span():
+    provider = TracerProvider()
+    with provider.get_tracer("t").start_as_current_span("s") as span:
+        trace_id = audit._current_trace_id()
+    assert trace_id == format(span.get_span_context().trace_id, "032x")
+    assert len(trace_id) == 32
+    provider.shutdown()
