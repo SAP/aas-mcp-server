@@ -30,6 +30,7 @@ from urllib.parse import urlparse
 import httpx2
 from fastmcp.server.dependencies import get_http_headers
 
+from .tracing import TracedAsyncClient
 from .backend_auth import BackendTokenProvider, ForwardStrategy
 from .constants import (
     DEFAULT_HTTP_TIMEOUT,
@@ -300,6 +301,7 @@ class BearerTokenAuth(httpx2.Auth):
 def build_async_client(
     base_url: str,
     backend_token_provider: BackendTokenProvider | None = None,
+    traced: bool = False,
 ) -> httpx2.AsyncClient:
     """
     Build an async HTTP client configured with the given backend token strategy.
@@ -310,6 +312,8 @@ def build_async_client(
         base_url: Base URL for the AAS backend.
         backend_token_provider: Token provider for backend auth. Defaults to
                                  ForwardStrategy (forward upstream token as-is).
+        traced: Wrap each backend request in an OpenTelemetry CLIENT span and
+                propagate the W3C trace context (only when tracing is enabled).
 
     Returns:
         Configured httpx2.AsyncClient instance
@@ -337,7 +341,8 @@ def build_async_client(
     headers = {**_configured_headers(), HEADER_ACCEPT: CONTENT_TYPE_JSON}
     forward_headers = _configured_forward_headers()
 
-    return httpx2.AsyncClient(
+    client_class = TracedAsyncClient if traced else httpx2.AsyncClient
+    return client_class(
         base_url=base_url,
         headers=headers,
         auth=BearerTokenAuth(

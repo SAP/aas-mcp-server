@@ -54,6 +54,7 @@ from .http_client import build_async_client
 from .tool_curation import curate_openapi_spec, prune_unused_schemas
 from .logging import configure_logging
 from .audit import AuditMiddleware, ToolOperationIndex
+from .tracing import configure_tracing
 from .constants import (
     DEFAULT_AUDIT_LOG_ENABLED,
     DEFAULT_LOG_LEVEL,
@@ -452,9 +453,16 @@ def build_mcp_server(
     # Build backend token provider (selects forward/token_exchange/none from env vars)
     backend_token_provider = build_backend_token_provider()
 
+    # OpenTelemetry tracing (opt-in, issue #133): installs an OTLP exporter only
+    # when OTEL_EXPORTER_OTLP_(TRACES_)ENDPOINT is set. FastMCP's own tools/call
+    # spans then become real, and backend requests get child CLIENT spans.
+    tracer_provider = configure_tracing()
+
     # Build HTTP client with the selected backend token strategy
     client = build_async_client(
-        base_url=base_url, backend_token_provider=backend_token_provider
+        base_url=base_url,
+        backend_token_provider=backend_token_provider,
+        **({"traced": True} if tracer_provider is not None else {}),
     )
 
     # Build auth provider (None when OAuth not configured)
