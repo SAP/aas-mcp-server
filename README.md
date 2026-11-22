@@ -382,6 +382,41 @@ Events are plain JSON lines, so any collector (Fluentd, Vector, Loki, CloudWatch
 
 Events never contain request or response bodies, query values, token values or error messages.
 
+## OpenTelemetry Tracing
+
+The server can export distributed traces over OTLP to any OpenTelemetry-compatible backend (an OTel Collector, Jaeger, Tempo, Honeycomb, Datadog, Elastic, ...). Tracing is off by default and costs nothing when unset.
+
+The Docker image already includes the tracing dependencies, so there you only set the standard `OTEL_*` variables:
+
+```bash
+docker run \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  -e OTEL_SERVICE_NAME=aas-mcp-server-aas-repo \
+  ...
+```
+
+For a pip install, add the optional extra first:
+
+```bash
+pip install 'aas-mcp-server[otel]'
+
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+export OTEL_SERVICE_NAME=aas-mcp-server-aas-repo   # optional, default: aas-mcp-server
+```
+
+Tracing turns on when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set. `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none` keep it off. The exporter reads the other standard variables (`OTEL_EXPORTER_OTLP_HEADERS`, `..._TIMEOUT`, `..._COMPRESSION`, `OTEL_RESOURCE_ATTRIBUTES`, ...) as usual. The extra (and the Docker image) ships the OTLP/HTTP exporter; for `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, also install `opentelemetry-exporter-otlp-proto-grpc`.
+
+Each tool call produces:
+
+| Span | Kind | Source | Key attributes |
+|------|------|--------|----------------|
+| `tools/call <tool>` | SERVER | FastMCP | `mcp.method.name`, `gen_ai.tool.name`, session and auth attributes |
+| `GET`, `PUT`, ... (child) | CLIENT | this server | `http.request.method`, `url.full` (without query), `server.address`, `server.port`, `http.response.status_code`, `error.type` |
+
+The W3C `traceparent`/`tracestate` headers are injected into every request to the AAS backend, so a traced backend continues the same trace. A `traceparent` the MCP client sends in the request `_meta` becomes the parent of the tool span (FastMCP behaviour).
+
+Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
+
 ## Supported Components
 
 - `aas-repo` - Asset Administration Shell Repository
