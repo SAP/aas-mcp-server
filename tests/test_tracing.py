@@ -25,8 +25,8 @@ from opentelemetry.trace import SpanKind, StatusCode
 import aas_mcp_server.tracing as tracing
 from aas_mcp_server.http_client import build_async_client
 from aas_mcp_server.server import build_mcp_server
+from aas_mcp_server.constants import DEFAULT_OTEL_SERVICE_NAME
 from aas_mcp_server.tracing import (
-    DEFAULT_SERVICE_NAME,
     TracedAsyncClient,
     configure_tracing,
     tracing_requested,
@@ -139,7 +139,10 @@ class TestConfigureTracing:
         provider, installed = self._configure(monkeypatch)
         try:
             assert installed == [provider]
-            assert provider.resource.attributes["service.name"] == DEFAULT_SERVICE_NAME
+            assert (
+                provider.resource.attributes["service.name"]
+                == DEFAULT_OTEL_SERVICE_NAME
+            )
         finally:
             provider.shutdown()
 

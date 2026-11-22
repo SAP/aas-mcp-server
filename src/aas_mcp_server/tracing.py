@@ -34,30 +34,25 @@ import httpx2
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 
+from .constants import (
+    DEFAULT_OTEL_SERVICE_NAME,
+    ENV_OTEL_EXPORTER_OTLP_ENDPOINT,
+    ENV_OTEL_EXPORTER_OTLP_PROTOCOL,
+    ENV_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+    ENV_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+    ENV_OTEL_SDK_DISABLED,
+    ENV_OTEL_TRACES_EXPORTER,
+    HTTP_ERROR_STATUS_MIN,
+    OTEL_EXPORTER_OTLP,
+    OTEL_EXTRA_HINT,
+    OTEL_INSTRUMENTATION_NAME,
+    OTEL_PROTOCOL_GRPC,
+    OTEL_PROTOCOL_HTTP_PROTOBUF,
+    OTEL_SERVICE_NAME_ATTR,
+    OTEL_UNKNOWN_SERVICE_PREFIX,
+)
+
 logger = logging.getLogger(__name__)
-
-INSTRUMENTATION_NAME = "aas_mcp_server"
-DEFAULT_SERVICE_NAME = "aas-mcp-server"
-OTEL_EXTRA_HINT = "pip install 'aas-mcp-server[otel]'"
-
-# Standard OpenTelemetry environment variables
-# (https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/)
-ENV_OTEL_SDK_DISABLED = "OTEL_SDK_DISABLED"
-ENV_OTEL_TRACES_EXPORTER = "OTEL_TRACES_EXPORTER"
-ENV_OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
-ENV_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
-ENV_OTEL_EXPORTER_OTLP_PROTOCOL = "OTEL_EXPORTER_OTLP_PROTOCOL"
-ENV_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
-
-PROTOCOL_HTTP_PROTOBUF = "http/protobuf"
-PROTOCOL_GRPC = "grpc"
-EXPORTER_OTLP = "otlp"
-EXPORTER_NONE = "none"
-
-SERVICE_NAME_ATTR = "service.name"
-UNKNOWN_SERVICE_PREFIX = "unknown_service"
-
-_ERROR_STATUS_MIN = 400
 
 
 def _env(name: str) -> str:
@@ -70,7 +65,7 @@ def tracing_requested() -> bool:
         return False
     exporters = {e.strip().lower() for e in _env(ENV_OTEL_TRACES_EXPORTER).split(",")}
     exporters.discard("")
-    if exporters and EXPORTER_OTLP not in exporters:
+    if exporters and OTEL_EXPORTER_OTLP not in exporters:
         # e.g. OTEL_TRACES_EXPORTER=none, or an exporter this server does not ship
         return False
     return bool(
@@ -83,12 +78,12 @@ def _otlp_protocol() -> str:
     return (
         _env(ENV_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL)
         or _env(ENV_OTEL_EXPORTER_OTLP_PROTOCOL)
-        or PROTOCOL_HTTP_PROTOBUF
+        or OTEL_PROTOCOL_HTTP_PROTOBUF
     ).lower()
 
 
 def _build_exporter(protocol: str) -> Any:
-    if protocol == PROTOCOL_GRPC:
+    if protocol == OTEL_PROTOCOL_GRPC:
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-not-found]
             OTLPSpanExporter as GrpcSpanExporter,
         )
@@ -124,7 +119,7 @@ def configure_tracing() -> Any | None:
     except ImportError:
         hint = (
             "pip install opentelemetry-exporter-otlp-proto-grpc"
-            if protocol == PROTOCOL_GRPC
+            if protocol == OTEL_PROTOCOL_GRPC
             else OTEL_EXTRA_HINT
         )
         logger.warning(
@@ -137,9 +132,11 @@ def configure_tracing() -> Any | None:
     # Resource.create() merges OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME.
     # Only fill in our default when the operator did not name the service.
     resource = Resource.create()
-    service_name = str(resource.attributes.get(SERVICE_NAME_ATTR, ""))
-    if not service_name or service_name.startswith(UNKNOWN_SERVICE_PREFIX):
-        resource = resource.merge(Resource({SERVICE_NAME_ATTR: DEFAULT_SERVICE_NAME}))
+    service_name = str(resource.attributes.get(OTEL_SERVICE_NAME_ATTR, ""))
+    if not service_name or service_name.startswith(OTEL_UNKNOWN_SERVICE_PREFIX):
+        resource = resource.merge(
+            Resource({OTEL_SERVICE_NAME_ATTR: DEFAULT_OTEL_SERVICE_NAME})
+        )
 
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -147,7 +144,7 @@ def configure_tracing() -> Any | None:
     logger.info(
         "OpenTelemetry tracing enabled (OTLP %s, service.name=%s)",
         protocol,
-        resource.attributes.get(SERVICE_NAME_ATTR),
+        resource.attributes.get(OTEL_SERVICE_NAME_ATTR),
     )
     return provider
 
@@ -171,7 +168,7 @@ class TracedAsyncClient(httpx2.AsyncClient):
         self._tracer = tracer
 
     def _get_tracer(self) -> Tracer:
-        return self._tracer or trace.get_tracer(INSTRUMENTATION_NAME)
+        return self._tracer or trace.get_tracer(OTEL_INSTRUMENTATION_NAME)
 
     async def send(self, request: httpx2.Request, **kwargs: Any) -> httpx2.Response:
         method = request.method.upper()
@@ -201,7 +198,7 @@ class TracedAsyncClient(httpx2.AsyncClient):
                 span.set_status(Status(StatusCode.ERROR))
                 raise
             span.set_attribute("http.response.status_code", response.status_code)
-            if response.status_code >= _ERROR_STATUS_MIN:
+            if response.status_code >= HTTP_ERROR_STATUS_MIN:
                 span.set_attribute("error.type", str(response.status_code))
                 span.set_status(Status(StatusCode.ERROR))
             return response

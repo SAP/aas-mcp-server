@@ -11,9 +11,11 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends && \
 
 # Copy and install Python package, then create non-root user in the same layer.
 # User creation must follow pip install so the installed scripts are owned correctly.
+# The [otel] extra is included so tracing can be turned on with OTEL_* variables
+# alone; nothing is exported unless an OTLP endpoint is configured.
 COPY pyproject.toml README.md /app/
 COPY src /app/src
-RUN pip install --no-cache-dir . && \
+RUN pip install --no-cache-dir ".[otel]" && \
     groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid 1000 --no-create-home --shell /bin/false appuser
 

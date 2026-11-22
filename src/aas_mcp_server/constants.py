@@ -156,6 +156,31 @@ LOCALHOST_ADDRESSES = frozenset({"127.0.0.1", "::1", "localhost"})
 WILDCARD_BIND_ADDRESSES = frozenset({"0.0.0.0", "::"})
 
 # ============================================================================
+# OpenTelemetry Tracing (opt-in, see tracing.py)
+# ============================================================================
+# Standard OpenTelemetry environment variables
+# (https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/)
+ENV_OTEL_SDK_DISABLED = "OTEL_SDK_DISABLED"
+ENV_OTEL_TRACES_EXPORTER = "OTEL_TRACES_EXPORTER"
+ENV_OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+ENV_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+ENV_OTEL_EXPORTER_OTLP_PROTOCOL = "OTEL_EXPORTER_OTLP_PROTOCOL"
+ENV_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
+
+OTEL_PROTOCOL_HTTP_PROTOBUF = "http/protobuf"
+OTEL_PROTOCOL_GRPC = "grpc"
+OTEL_EXPORTER_OTLP = "otlp"
+
+OTEL_INSTRUMENTATION_NAME = "aas_mcp_server"
+DEFAULT_OTEL_SERVICE_NAME = "aas-mcp-server"
+OTEL_SERVICE_NAME_ATTR = "service.name"
+OTEL_UNKNOWN_SERVICE_PREFIX = "unknown_service"
+OTEL_EXTRA_HINT = "pip install 'aas-mcp-server[otel]'"
+
+# Lowest HTTP status recorded as an error on backend CLIENT spans
+HTTP_ERROR_STATUS_MIN = 400
+
+# ============================================================================
 # Path and Filter Delimiters (for openapi_loader)
 # ============================================================================
 FILTER_DELIMITER = ":"
