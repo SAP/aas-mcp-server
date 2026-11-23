@@ -359,7 +359,7 @@ Set `AUDIT_LOG_ENABLED=true` to record every MCP tool call as one JSON object pe
 Events are plain JSON lines, so any collector (Fluentd, Vector, Loki, CloudWatch, `docker logs`, ...) can ingest them. On HTTP transports they are written to **stdout**. On the `stdio` transport, stdout carries the MCP protocol, so they are written to **stderr** instead.
 
 ```json
-{"event":"tool_call","timestamp":"2026-11-19T10:15:02.481+00:00","component":"aas-repo","tool":"PutAssetAdministrationShellById","operation":"PUT /shells/{aasIdentifier}","access":"write","resource_id":{"aasIdentifier":"aHR0cHM6Ly9leGFtcGxlLmNvbS9hYXMvMQ"},"subject":"user-123","source":"mcp-client-id","trace_id":null,"outcome":"success","duration_ms":41.7}
+{"event":"tool_call","timestamp":"2026-11-19T10:15:02.481+00:00","component":"aas-repo","tool":"PutAssetAdministrationShellById","operation":"PUT /shells/{aasIdentifier}","access":"write","resource_id":{"aasIdentifier":"aHR0cHM6Ly9leGFtcGxlLmNvbS9hYXMvMQ"},"subject":"user-123","source":"mcp-client-id","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","outcome":"success","duration_ms":41.7}
 ```
 
 | Field | Description |
@@ -373,7 +373,7 @@ Events are plain JSON lines, so any collector (Fluentd, Vector, Loki, CloudWatch
 | `resource_id` | Path identifiers of the call (e.g. `aasIdentifier`, `submodelIdentifier`), or `null`. |
 | `subject` | `sub` claim of the caller's access token, or `null` without OAuth. |
 | `source` | OAuth client id of the MCP client, or `null`. |
-| `trace_id` | Reserved for OpenTelemetry correlation; currently `null`. |
+| `trace_id` | W3C trace id of the tool call's OpenTelemetry span (see [OpenTelemetry Tracing](#opentelemetry-tracing)), or `null` when there is no trace context. |
 | `outcome` | `success`, `denied` (rate limited, tool not exposed, or backend 401/403), or `error`. |
 | `duration_ms` | Time spent handling the call. |
 | `status_code` | Backend HTTP status, present when the backend returned an error. |
@@ -414,6 +414,8 @@ Each tool call produces:
 | `GET`, `PUT`, ... (child) | CLIENT | this server | `http.request.method`, `url.full` (without query), `server.address`, `server.port`, `http.response.status_code`, `error.type` |
 
 The W3C `traceparent`/`tracestate` headers are injected into every request to the AAS backend, so a traced backend continues the same trace. A `traceparent` the MCP client sends in the request `_meta` becomes the parent of the tool span (FastMCP behaviour).
+
+With [audit logging](#audit-logging) on, each audit event carries the same trace id in `trace_id`, so an audit line can be looked up in the tracing backend.
 
 Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
 

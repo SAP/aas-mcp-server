@@ -11,7 +11,8 @@ JSON object on a single line:
      "tool": "get_shell", "operation": "GET /shells/{aasIdentifier}",
      "access": "read", "resource_id": {"aasIdentifier": "..."},
      "subject": "user-123", "source": "mcp-client-id",
-     "outcome": "success", "duration_ms": 12.3, "trace_id": null}
+     "outcome": "success", "duration_ms": 12.3,
+     "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"}
 
 Design notes:
 
@@ -23,6 +24,10 @@ Design notes:
   placeholders, not filled-in URLs), path identifiers, the token subject and
   client id, and the outcome are recorded. Request bodies, query values,
   response bodies, token values and exception messages are never written.
+* ``trace_id`` is the W3C trace id of the active OpenTelemetry span (the
+  ``tools/call`` span FastMCP opens around the middleware chain), so an audit
+  line can be joined with its trace. It is ``null`` when no valid trace
+  context exists (tracing off and no ``traceparent`` from the client).
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from fastmcp.server.dependencies import get_access_token
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.middleware.rate_limiting import RateLimitError
 from fastmcp.tools import Tool, ToolResult
+from opentelemetry import trace
 
 from .constants import WRITE_METHODS
 
@@ -123,6 +129,14 @@ def _current_identity() -> tuple[str | None, str | None]:
     return (str(subject) if subject is not None else None), token.client_id
 
 
+def _current_trace_id() -> str | None:
+    """W3C trace id (32 lowercase hex chars) of the active span, if valid."""
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        return None
+    return format(span_context.trace_id, "032x")
+
+
 def _exception_chain(exc: BaseException) -> list[BaseException]:
     """The exception and its causes (FastMCP wraps backend errors in ToolError)."""
     chain: list[BaseException] = []
@@ -197,8 +211,7 @@ class AuditMiddleware(Middleware):
             "resource_id": resource_id,
             "subject": subject,
             "source": client_id,
-            # Filled in once OpenTelemetry tracing lands (#133).
-            "trace_id": None,
+            "trace_id": _current_trace_id(),
         }
 
     async def on_call_tool(
