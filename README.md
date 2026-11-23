@@ -344,6 +344,7 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 | `OAUTH_SESSION_STORE_URL` | Optional | External store for OAuth session state. Supports `redis://`, `rediss://`, `postgresql://`. Defaults to in-memory (state lost on restart). |
 | `MCP_RATE_LIMIT_PER_MINUTE` | Optional | Max requests per client per minute. Default: 60. |
 | `AUDIT_LOG_ENABLED` | Optional | Emit a structured JSON audit event per tool call (see [Audit Logging](#audit-logging)). Default: `false`. |
+| `LOG_FORMAT` | Optional | `text` (default) or `json` (one JSON object per line). Both carry the trace context when there is one (see [Log correlation](#log-correlation)). |
 | `AAS_VALIDATE_OUTPUT` | Optional | Validate tool outputs against generated OpenAPI schemas. Default: `true`; set to `false` to advertise a permissive output schema and avoid validation overhead for large nested AAS responses. |
 
 ### How it works
@@ -416,6 +417,24 @@ Each tool call produces:
 The W3C `traceparent`/`tracestate` headers are injected into every request to the AAS backend, so a traced backend continues the same trace. A `traceparent` the MCP client sends in the request `_meta` becomes the parent of the tool span (FastMCP behaviour).
 
 With [audit logging](#audit-logging) on, each audit event carries the same trace id in `trace_id`, so an audit line can be looked up in the tracing backend.
+
+### Log correlation
+
+Application log records carry the trace context too. Inside a traced tool call, each record gets the W3C `trace_id` and `span_id` of the active span (the tool span, or the backend request span while that request runs). The ids also come through when tracing is off but the MCP client sends a `traceparent`. With no trace context, the output is the same as before.
+
+`LOG_FORMAT=text` (default) appends the ids to the line:
+
+```text
+2026-11-23 11:38:41,278 INFO aas_mcp_server.http_client: ... trace_id=4bf92f3577b34da6a3ce929d0e0e4736 span_id=00f067aa0ba902b7
+```
+
+`LOG_FORMAT=json` writes one JSON object per line for log collectors, with `trace_id`/`span_id` set to `null` outside a trace:
+
+```json
+{"timestamp":"2026-11-23T11:38:41.278+00:00","level":"INFO","logger":"aas_mcp_server.http_client","message":"...","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
+```
+
+An exception adds an `exception` field with the traceback. Logs still go to stderr, so the `stdio` transport stays protocol-clean. A log line, its audit event and its trace can be joined on `trace_id`.
 
 Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
 

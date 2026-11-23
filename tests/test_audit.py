@@ -10,6 +10,7 @@ small OpenAPI spec, with the AAS backend replaced by an httpx2 MockTransport.
 
 import io
 import json
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 import aas_mcp_server.audit as audit
 from aas_mcp_server.audit import AuditMiddleware, ToolOperationIndex
 from aas_mcp_server.constants import ENV_AUDIT_LOG_ENABLED
+from aas_mcp_server.logging import JsonFormatter, TraceContextFilter
 from aas_mcp_server.server import build_mcp_server
 from aas_mcp_server.tracing import TracedAsyncClient
 
@@ -443,6 +445,52 @@ class TestTraceCorrelation:
             s for s in exporter.get_finished_spans() if s.name == "tools/call GetShell"
         )
         assert event["trace_id"] == format(tool_span.context.trace_id, "032x")
+
+    async def test_log_records_share_the_audit_trace_id(self, spans):
+        """A log line written during the backend request joins the audit event and trace (#134)."""
+        _, exporter = spans
+        log_stream = io.StringIO()
+        log_handler = logging.StreamHandler(log_stream)
+        log_handler.addFilter(TraceContextFilter())
+        log_handler.setFormatter(JsonFormatter())
+        backend_logger = logging.getLogger("aas_mcp_server.test_backend")
+        backend_logger.addHandler(log_handler)
+        backend_logger.setLevel(logging.INFO)
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            backend_logger.info("backend request")
+            return httpx2.Response(200, json={"id": "x"})
+
+        audit_stream = io.StringIO()
+        index = ToolOperationIndex()
+        server = FastMCP.from_openapi(
+            openapi_spec=SPEC,
+            client=TracedAsyncClient(
+                base_url="http://backend.invalid",
+                transport=httpx2.MockTransport(handler),
+            ),
+            middleware=[
+                AuditMiddleware(
+                    component_name="aas-repo",
+                    operation_index=index,
+                    transport="http",
+                    stream_factory=lambda: audit_stream,
+                )
+            ],
+            mcp_component_fn=index.record,
+        )
+
+        try:
+            await _call(server, "GetShell", {"aasIdentifier": AAS_ID})
+        finally:
+            backend_logger.removeHandler(log_handler)
+
+        [event] = _events(audit_stream)
+        [log_entry] = [json.loads(line) for line in log_stream.getvalue().splitlines()]
+        backend_span = next(s for s in exporter.get_finished_spans() if s.name == "GET")
+        assert log_entry["trace_id"] == event["trace_id"]
+        assert log_entry["trace_id"] == format(backend_span.context.trace_id, "032x")
+        assert log_entry["span_id"] == format(backend_span.context.span_id, "016x")
 
 
 @pytest.mark.asyncio

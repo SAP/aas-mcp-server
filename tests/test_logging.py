@@ -7,16 +7,33 @@ Tests for logging module.
 Tests the logging configuration with various log levels and httpx logger control.
 """
 
+import io
+import json
 import logging
 import os
+import sys
 from unittest.mock import patch, MagicMock
 
+import pytest
+from opentelemetry import trace
+from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+
+from aas_mcp_server.constants import ENV_LOG_FORMAT
 from aas_mcp_server.logging import (
     configure_logging,
     ENV_VAR_HTTPX_LOG_LEVEL,
     DEFAULT_LOG_LEVEL,
     LOGGER_HTTPX,
+    LOG_FORMAT,
+    JsonFormatter,
+    TraceContextFilter,
+    TraceTextFormatter,
 )
+
+TRACE_ID = 0x4BF92F3577B34DA6A3CE929D0E0E4736
+SPAN_ID = 0x00F067AA0BA902B7
+TRACE_ID_HEX = "4bf92f3577b34da6a3ce929d0e0e4736"
+SPAN_ID_HEX = "00f067aa0ba902b7"
 
 
 class TestConfigureLogging:
@@ -123,7 +140,7 @@ class TestConfigureLogging:
         mock_basic_config.assert_called_once()
         call_kwargs = mock_basic_config.call_args.kwargs
         assert "level" in call_kwargs
-        assert "format" in call_kwargs
+        assert "handlers" in call_kwargs
 
 
 class TestConstants:
@@ -140,3 +157,181 @@ class TestConstants:
     def test_env_var_httpx_log_level_is_correct(self):
         """Test that httpx log level env var name is correct."""
         assert ENV_VAR_HTTPX_LOG_LEVEL == "HTTPX_LOG_LEVEL"
+
+
+def _active_span():
+    """A valid span context, as a remote traceparent or a recording span gives."""
+    return trace.use_span(
+        NonRecordingSpan(
+            SpanContext(
+                trace_id=TRACE_ID,
+                span_id=SPAN_ID,
+                is_remote=True,
+                trace_flags=TraceFlags(TraceFlags.SAMPLED),
+            )
+        )
+    )
+
+
+def _record(
+    msg: str = "hello %s", args: tuple = ("world",), exc_info=None
+) -> logging.LogRecord:
+    return logging.LogRecord(
+        name="aas_mcp_server.test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg=msg,
+        args=args,
+        exc_info=exc_info,
+    )
+
+
+def _capture_logger(formatter: logging.Formatter) -> tuple[logging.Logger, io.StringIO]:
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(TraceContextFilter())
+    handler.setFormatter(formatter)
+    logger = logging.getLogger(f"aas_mcp_server.test_capture.{id(stream)}")
+    logger.handlers = [handler]
+    logger.propagate = False
+    logger.setLevel(logging.DEBUG)
+    return logger, stream
+
+
+class TestTraceContextFilter:
+    """trace_id/span_id come from the active OpenTelemetry span."""
+
+    def test_no_span_sets_none(self):
+        record = _record()
+        assert TraceContextFilter().filter(record) is True
+        assert record.trace_id is None
+        assert record.span_id is None
+
+    def test_active_span_sets_w3c_hex_ids(self):
+        record = _record()
+        with _active_span():
+            assert TraceContextFilter().filter(record) is True
+        assert record.trace_id == TRACE_ID_HEX
+        assert record.span_id == SPAN_ID_HEX
+
+
+class TestTraceTextFormatter:
+    """Default text format, unchanged unless a trace context exists."""
+
+    def test_without_trace_matches_plain_format(self):
+        record = _record()
+        TraceContextFilter().filter(record)
+        assert TraceTextFormatter().format(record) == logging.Formatter(
+            LOG_FORMAT
+        ).format(record)
+
+    def test_with_trace_appends_ids(self):
+        logger, stream = _capture_logger(TraceTextFormatter())
+        with _active_span():
+            logger.info("hello %s", "world")
+        line = stream.getvalue().rstrip("\n")
+        assert line.endswith(
+            f": hello world trace_id={TRACE_ID_HEX} span_id={SPAN_ID_HEX}"
+        )
+
+    def test_ids_stay_on_first_line_with_traceback(self):
+        logger, stream = _capture_logger(TraceTextFormatter())
+        with _active_span():
+            try:
+                raise ValueError("boom")
+            except ValueError:
+                logger.exception("failed")
+        first, _, rest = stream.getvalue().partition("\n")
+        assert first.endswith(f": failed trace_id={TRACE_ID_HEX} span_id={SPAN_ID_HEX}")
+        assert rest.startswith("Traceback")
+
+
+class TestJsonFormatter:
+    """One JSON object per line."""
+
+    def test_without_trace(self):
+        logger, stream = _capture_logger(JsonFormatter())
+        logger.warning("hello %s", "world")
+        lines = stream.getvalue().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["level"] == "WARNING"
+        assert entry["logger"] == logger.name
+        assert entry["message"] == "hello world"
+        assert entry["trace_id"] is None
+        assert entry["span_id"] is None
+        assert entry["timestamp"].endswith("+00:00")
+        assert "exception" not in entry
+
+    def test_with_trace(self):
+        logger, stream = _capture_logger(JsonFormatter())
+        with _active_span():
+            logger.info("hello")
+        entry = json.loads(stream.getvalue())
+        assert entry["trace_id"] == TRACE_ID_HEX
+        assert entry["span_id"] == SPAN_ID_HEX
+
+    def test_exception_stays_on_one_line(self):
+        logger, stream = _capture_logger(JsonFormatter())
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            logger.exception("failed")
+        lines = stream.getvalue().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["message"] == "failed"
+        assert "ValueError: boom" in entry["exception"]
+
+    def test_record_without_filter_still_formats(self):
+        """A record that skipped the filter (another handler path) has null ids."""
+        entry = json.loads(JsonFormatter().format(_record()))
+        assert entry["trace_id"] is None
+        assert entry["message"] == "hello world"
+
+
+class TestLogFormatSelection:
+    """LOG_FORMAT picks the formatter of the stderr handler."""
+
+    @staticmethod
+    def _handler(mock_basic_config) -> logging.Handler:
+        handlers = mock_basic_config.call_args.kwargs["handlers"]
+        assert len(handlers) == 1
+        return handlers[0]
+
+    @pytest.mark.parametrize(
+        ("env", "expected"),
+        [
+            ({}, TraceTextFormatter),
+            ({ENV_LOG_FORMAT: "text"}, TraceTextFormatter),
+            ({ENV_LOG_FORMAT: "json"}, JsonFormatter),
+            ({ENV_LOG_FORMAT: " JSON "}, JsonFormatter),
+        ],
+    )
+    @patch("logging.basicConfig")
+    def test_formatter(self, mock_basic_config, env, expected):
+        with patch.dict(os.environ, env, clear=True):
+            configure_logging()
+        handler = self._handler(mock_basic_config)
+        assert isinstance(handler.formatter, expected)
+        assert any(isinstance(f, TraceContextFilter) for f in handler.filters)
+        assert handler.stream is sys.stderr
+
+    @patch("logging.warning")
+    @patch("logging.basicConfig")
+    def test_invalid_value_falls_back_to_text_and_warns_after_setup(
+        self, mock_basic_config, mock_warning
+    ):
+        calls = []
+        mock_basic_config.side_effect = lambda **_: calls.append("basicConfig")
+        mock_warning.side_effect = lambda *_: calls.append("warning")
+
+        with patch.dict(os.environ, {ENV_LOG_FORMAT: "xml"}, clear=True):
+            configure_logging()
+
+        assert isinstance(
+            self._handler(mock_basic_config).formatter, TraceTextFormatter
+        )
+        assert calls == ["basicConfig", "warning"]
+        assert "xml" in mock_warning.call_args.args[0]
