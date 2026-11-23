@@ -1056,20 +1056,19 @@ class TestBuildBackendTokenProvider:
         provider = build_backend_token_provider()
         assert isinstance(provider, ForwardStrategy)
 
-    @patch.dict(
-        os.environ,
-        {
-            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-        },
-        clear=True,
-    )
-    def test_auto_selects_token_exchange_when_audience_set(self):
-        """Auto-selects TokenExchangeStrategy when BACKEND_AUTH_AUDIENCE is set."""
-        provider = build_backend_token_provider()
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_CLIENT_ID: "mcp-client-id",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-secret",
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+    }, clear=True)
+    def test_audience_with_client_creds_auto_selects_token_exchange(self, caplog):
+        """Probe chain: CLIENT_ID + CLIENT_SECRET + AUDIENCE → auto-selects token_exchange."""
+        import logging
+        with caplog.at_level(logging.INFO, logger="aas_mcp_server.backend_auth"):
+            provider = build_backend_token_provider()
         assert isinstance(provider, TokenExchangeStrategy)
+        assert "auto-selected token_exchange" in caplog.text
 
     @patch.dict(
         os.environ,
@@ -1099,16 +1098,13 @@ class TestBuildBackendTokenProvider:
             build_backend_token_provider()
 
     @patch("aas_mcp_server.backend_auth.httpx2.get")
-    @patch.dict(
-        os.environ,
-        {
-            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-            ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
-        },
-        clear=True,
-    )
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_TOKEN_EXCHANGE,
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        ENV_OAUTH_ISSUER_URL: "https://idp.example.com",
+    }, clear=True)
     def test_token_endpoint_discovered_from_issuer_when_not_explicit(self, mock_get):
         """When BACKEND_AUTH_TOKEN_ENDPOINT not set, token endpoint is discovered via OIDC metadata."""
         mock_get.return_value.status_code = 200
@@ -1123,18 +1119,15 @@ class TestBuildBackendTokenProvider:
             "https://idp.example.com/.well-known/openid-configuration", timeout=5.0
         )
 
-    @patch.dict(
-        os.environ,
-        {
-            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-            ENV_BACKEND_AUTH_CLIENT_ID: "override-client-id",
-            ENV_BACKEND_AUTH_CLIENT_SECRET: "override-secret",
-            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-        },
-        clear=True,
-    )
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_TOKEN_EXCHANGE,
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_CLIENT_ID: "override-client-id",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "override-secret",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+    }, clear=True)
     def test_backend_client_id_overrides_oauth_client_id(self):
         """BACKEND_AUTH_CLIENT_ID overrides OAUTH_CLIENT_ID for token exchange."""
         provider = build_backend_token_provider()
@@ -1244,21 +1237,286 @@ class TestBuildBackendTokenProvider:
         assert isinstance(provider, ClientCredentialsStrategy)
         assert provider.token_endpoint == "https://idp.example.com/oauth2/token"
 
-    @patch.dict(
-        os.environ,
-        {
-            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
-            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
-            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
-        },
-        clear=True,
-    )
-    def test_audience_alone_does_not_select_client_credentials(self):
-        """Setting BACKEND_AUTH_AUDIENCE without explicit strategy still routes to token_exchange."""
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-csec",
+    }, clear=True)
+    def test_client_credentials_auto_selected_without_explicit_strategy(self):
+        """Probe chain: CLIENT_ID + CLIENT_SECRET, no audience → client_credentials without explicit strategy."""
         provider = build_backend_token_provider()
-        assert isinstance(provider, TokenExchangeStrategy)
-        assert not isinstance(provider, ClientCredentialsStrategy)
+        assert isinstance(provider, ClientCredentialsStrategy)
+        assert provider.token_endpoint == "https://idp.example.com/oauth/token"
+        assert provider.client_id == "svc-cid"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_no_env_vars_returns_forward(self):
+        """Empty environment → forward (shared-IdP default)."""
+        provider = build_backend_token_provider()
+        assert isinstance(provider, ForwardStrategy)
+
+# ---------------------------------------------------------------------------
+# Probe chain (_probe_strategy) tests
+# ---------------------------------------------------------------------------
+
+class TestProbeChain:
+    """Unit tests for the _probe_strategy() auto-detection logic.
+
+    Covers every branch of the probe order:
+      explicit > client_id+secret+audience > client_id+secret > forward (default)
+    """
+
+    def test_no_env_vars_selects_forward(self):
+        """Empty environment → forward (shared-IdP default)."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {}, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_FORWARD
+
+    def test_client_id_and_secret_selects_client_credentials(self):
+        """CLIENT_ID + CLIENT_SECRET, no audience → client_credentials."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-sec",
+        }, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_CLIENT_CREDENTIALS
+
+    def test_client_id_secret_and_audience_selects_token_exchange(self):
+        """CLIENT_ID + CLIENT_SECRET + AUDIENCE → token_exchange."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-sec",
+            ENV_BACKEND_AUTH_AUDIENCE: "https://aas.example.com",
+        }, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_TOKEN_EXCHANGE
+
+    def test_audience_alone_falls_through_to_forward(self):
+        """AUDIENCE set but no CLIENT_ID/SECRET → not enough signal → forward."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_AUDIENCE: "https://aas.example.com",
+        }, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_FORWARD
+
+    def test_explicit_strategy_overrides_probe(self):
+        """BACKEND_AUTH_STRATEGY always wins over probe, even when creds suggest otherwise."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_FORWARD,
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-sec",
+            ENV_BACKEND_AUTH_AUDIENCE: "https://aas.example.com",
+        }, clear=True):
+            # creds+audience would suggest token_exchange, but explicit wins
+            assert _probe_strategy() == BACKEND_STRATEGY_FORWARD
+
+    def test_explicit_none_strategy_not_auto_selected(self):
+        """none is never auto-selected — it only appears via explicit override."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {}, clear=True):
+            result = _probe_strategy()
+            assert result != BACKEND_STRATEGY_NONE
+
+    def test_oauth_client_id_fallback_does_not_count_for_probe(self):
+        """OAUTH_CLIENT_ID/SECRET are NOT used for probe detection — only BACKEND_AUTH_* vars drive it.
+
+        OAUTH_* vars are inbound MCP client credentials. They must not trigger
+        client_credentials auto-selection since the probe would otherwise fire
+        for every deployment that has inbound OAuth configured.
+        """
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_OAUTH_CLIENT_ID: "oauth-cid",
+            ENV_OAUTH_CLIENT_SECRET: "oauth-sec",
+        }, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_FORWARD
+
+    def test_probe_logs_auto_selection_reason(self, caplog):
+        """Probe logs which strategy was auto-selected and why (INFO level)."""
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-sec",
+            ENV_BACKEND_AUTH_AUDIENCE: "https://aas.example.com",
+        }, clear=True):
+            with caplog.at_level(logging.INFO, logger="aas_mcp_server.backend_auth"):
+                _probe_strategy()
+        assert "auto-selected token_exchange" in caplog.text
+
+    def test_probe_logs_explicit_override(self, caplog):
+        """Explicit BACKEND_AUTH_STRATEGY is logged at DEBUG level."""
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_NONE,
+        }, clear=True):
+            with caplog.at_level(logging.DEBUG, logger="aas_mcp_server.backend_auth"):
+                _probe_strategy()
+        assert "skipping auto-detection" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Config dataclass from_env() tests
+# ---------------------------------------------------------------------------
+
+class TestTokenExchangeConfigFromEnv:
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_happy_path(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        cfg = TokenExchangeConfig.from_env()
+        assert cfg.audience == "aud"
+        assert cfg.token_endpoint == "https://idp.example.com/token"
+        assert cfg.client_id == "cid"
+        assert cfg.client_secret == "csec"
+        assert cfg.scope is None
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+        ENV_BACKEND_AUTH_SCOPE: "api.read",
+    }, clear=True)
+    def test_scope_included(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        cfg = TokenExchangeConfig.from_env()
+        assert cfg.scope == "api.read"
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_missing_audience_raises(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        with pytest.raises(ValueError, match="BACKEND_AUTH_AUDIENCE"):
+            TokenExchangeConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_missing_client_id_raises(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        with pytest.raises(ValueError, match="client ID"):
+            TokenExchangeConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+    }, clear=True)
+    def test_missing_client_secret_raises(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        with pytest.raises(ValueError, match="client secret"):
+            TokenExchangeConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_missing_endpoint_and_issuer_raises(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            TokenExchangeConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "not-a-valid-url",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_invalid_endpoint_url_raises(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            TokenExchangeConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "aud",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+        ENV_OAUTH_CLIENT_ID: "oauth-fallback-cid",
+        ENV_OAUTH_CLIENT_SECRET: "oauth-fallback-csec",
+    }, clear=True)
+    def test_oauth_client_id_fallback(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        cfg = TokenExchangeConfig.from_env()
+        assert cfg.client_id == "oauth-fallback-cid"
+
+
+class TestClientCredentialsConfigFromEnv:
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_happy_path(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        cfg = ClientCredentialsConfig.from_env()
+        assert cfg.client_id == "cid"
+        assert cfg.client_secret == "csec"
+        assert cfg.token_endpoint == "https://idp.example.com/token"
+        assert cfg.scope is None
+        assert cfg.audience is None
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+        ENV_BACKEND_AUTH_SCOPE: "api.read",
+        ENV_BACKEND_AUTH_AUDIENCE: "https://api.example.com",
+    }, clear=True)
+    def test_scope_and_audience_included(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        cfg = ClientCredentialsConfig.from_env()
+        assert cfg.scope == "api.read"
+        assert cfg.audience == "https://api.example.com"
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_missing_client_id_raises(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        with pytest.raises(ValueError, match="client ID"):
+            ClientCredentialsConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/token",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+    }, clear=True)
+    def test_missing_client_secret_raises(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        with pytest.raises(ValueError, match="client secret"):
+            ClientCredentialsConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_missing_endpoint_and_issuer_raises(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            ClientCredentialsConfig.from_env()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "not-a-valid-url",
+        ENV_BACKEND_AUTH_CLIENT_ID: "cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "csec",
+    }, clear=True)
+    def test_invalid_endpoint_url_raises(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
+            ClientCredentialsConfig.from_env()
 
 
 # ---------------------------------------------------------------------------
@@ -1621,16 +1879,13 @@ class TestFactoryLogsSanitizedEndpoint:
         assert "endpoint=https://[::1]:8080/oauth/token scope=" in caplog.text
         assert "s3cr3t" not in caplog.text
 
-    @patch.dict(
-        os.environ,
-        {
-            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
-            ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
-            ENV_BACKEND_AUTH_CLIENT_ID: "mcp-cid",
-            ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-csec",
-        },
-        clear=True,
-    )
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_STRATEGY: BACKEND_STRATEGY_TOKEN_EXCHANGE,
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: RAW_IPV6_ENDPOINT,
+        ENV_BACKEND_AUTH_CLIENT_ID: "mcp-cid",
+        ENV_BACKEND_AUTH_CLIENT_SECRET: "mcp-csec",
+    }, clear=True)
     def test_token_exchange_info_log_brackets_ipv6_and_drops_query(self, caplog):
         caplog.set_level(logging.INFO, logger="aas_mcp_server.backend_auth")
         provider = build_backend_token_provider()

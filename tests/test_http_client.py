@@ -529,6 +529,147 @@ class TestBuildAsyncClient:
         )
 
 
+# ---------------------------------------------------------------------------
+# ForwardStrategy end-to-end: shared-IdP scenario
+#
+# These tests cover the full path:
+#   MCP inbound JWT → ForwardStrategy.get_token() → BearerTokenAuth → AAS request
+#
+# This is the "shared IdP" scenario where the MCP client and AAS backend
+# accept the same JWT — no token exchange or client credentials needed.
+# ---------------------------------------------------------------------------
+
+class TestForwardStrategyEndToEnd:
+    """Full-path tests: ForwardStrategy wired into BearerTokenAuth."""
+
+    async def _run_auth_flow(self, auth: BearerTokenAuth) -> httpx2.Request:
+        request = httpx2.Request("GET", TEST_BASE_URL + "/shells")
+        flow = auth.async_auth_flow(request)
+        await flow.__anext__()
+        try:
+            await flow.athrow(StopAsyncIteration)
+        except (StopAsyncIteration, Exception):
+            pass
+        return request
+
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_inbound_jwt_forwarded_verbatim_to_aas(self, _mock_headers):
+        """The JWT the MCP client sent arrives unchanged on the AAS request."""
+        inbound_jwt = "test-header.test-payload.test-signature"
+        mock_token = MagicMock()
+        mock_token.token = inbound_jwt
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_token):
+            from aas_mcp_server.backend_auth import ForwardStrategy
+            auth = BearerTokenAuth(provider=ForwardStrategy())
+            request = await self._run_auth_flow(auth)
+
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=inbound_jwt)
+
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_no_inbound_token_means_no_auth_header_on_aas_request(self, _mock_headers):
+        """When the MCP client sent no token, the AAS request has no Authorization header.
+
+        This can happen on unauthenticated MCP transports (stdio) or when the
+        inbound auth middleware is not configured. The AAS backend then decides
+        whether to allow or reject the unauthenticated request.
+        """
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=None):
+            from aas_mcp_server.backend_auth import ForwardStrategy
+            auth = BearerTokenAuth(provider=ForwardStrategy())
+            request = await self._run_auth_flow(auth)
+
+        assert HEADER_AUTHORIZATION not in request.headers
+
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_token_forwarded_exactly_once_per_request(self, _mock_headers):
+        """ForwardStrategy is called once per outbound AAS request, not cached."""
+        tokens = ["token-first-call", "token-second-call"]
+        call_count = 0
+
+        async def _get_token_side_effect():
+            nonlocal call_count
+            t = tokens[call_count % len(tokens)]
+            call_count += 1
+            return t
+
+        from aas_mcp_server.backend_auth import ForwardStrategy
+        strategy = ForwardStrategy()
+        strategy.get_token = _get_token_side_effect
+
+        auth = BearerTokenAuth(provider=strategy)
+
+        req1 = await self._run_auth_flow(auth)
+        req2 = await self._run_auth_flow(auth)
+
+        assert req1.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token="token-first-call")
+        assert req2.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token="token-second-call")
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_expired_token_forwarded_as_is(self, _mock_headers):
+        """ForwardStrategy forwards whatever token is in context — including expired ones.
+
+        Token expiry validation is the responsibility of FastMCP's inbound auth
+        middleware. ForwardStrategy does not re-validate the token; it only
+        forwards it. If expiry checking is needed before forwarding, that must
+        be added to ForwardStrategy.get_token() — see test docstring for context.
+        """
+        expired_jwt = "eyJhbGciOiJSUzI1NiJ9.eyJleHAiOjF9.expired-sig"
+        mock_token = MagicMock()
+        mock_token.token = expired_jwt
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_token):
+            from aas_mcp_server.backend_auth import ForwardStrategy
+            auth = BearerTokenAuth(provider=ForwardStrategy())
+            request = await self._run_auth_flow(auth)
+
+        # ForwardStrategy forwards it — the AAS backend will return 401
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=expired_jwt)
+
+    @pytest.mark.asyncio
+    @patch.dict(os.environ, {ENV_AAS_FORWARD_HEADERS: '["x-tenant-id"]'}, clear=True)
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={"x-tenant-id": "tenant-acme"})
+    async def test_shared_idp_with_forwarded_tenant_header(self, _mock_headers):
+        """Shared-IdP setup: JWT forwarded AND a custom inbound header forwarded to AAS.
+
+        Common pattern: MCP client sends both a JWT and a tenant header; both
+        must reach the AAS backend unchanged.
+        """
+        inbound_jwt = "test-header.test-payload.test-signature"
+        mock_token = MagicMock()
+        mock_token.token = inbound_jwt
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_token):
+            client = build_async_client(TEST_BASE_URL)
+            request = client.build_request("GET", "/shells")
+            flow = client.auth.async_auth_flow(request)
+            await flow.__anext__()
+            await flow.aclose()
+
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=inbound_jwt)
+        assert request.headers["x-tenant-id"] == "tenant-acme"
+
+    @pytest.mark.asyncio
+    @patch("aas_mcp_server.http_client.get_http_headers", return_value={})
+    async def test_bearer_token_auth_defaults_to_forward_strategy(self, _mock_headers):
+        """BearerTokenAuth with no explicit provider uses ForwardStrategy — shared-IdP default."""
+        inbound_jwt = "test-header.test-payload.test-signature"
+        mock_token = MagicMock()
+        mock_token.token = inbound_jwt
+
+        with patch("aas_mcp_server.backend_auth.get_access_token", return_value=mock_token):
+            # No provider passed — should default to ForwardStrategy
+            auth = BearerTokenAuth()
+            request = await self._run_auth_flow(auth)
+
+        assert request.headers[HEADER_AUTHORIZATION] == AUTH_BEARER_FORMAT.format(token=inbound_jwt)
+
+
 class TestConstants:
     """Tests for module-level constants."""
 
