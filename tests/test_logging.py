@@ -290,6 +290,22 @@ class TestJsonFormatter:
         assert entry["trace_id"] is None
         assert entry["message"] == "hello world"
 
+    def test_preformatted_exception_text_is_kept(self):
+        """A record whose traceback was already rendered (exc_info cleared) keeps it."""
+        record = _record()
+        record.exc_text = "Traceback (most recent call last):\nValueError: boom"
+        entry = json.loads(JsonFormatter().format(record))
+        assert entry["exception"] == record.exc_text
+
+    def test_stack_info(self):
+        logger, stream = _capture_logger(JsonFormatter())
+        logger.info("where", stack_info=True)
+        lines = stream.getvalue().splitlines()
+        assert len(lines) == 1
+        assert json.loads(lines[0])["stack"].startswith(
+            "Stack (most recent call last):"
+        )
+
 
 class TestLogFormatSelection:
     """LOG_FORMAT picks the formatter of the stderr handler."""
