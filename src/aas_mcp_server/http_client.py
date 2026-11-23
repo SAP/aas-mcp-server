@@ -312,8 +312,10 @@ def build_async_client(
         base_url: Base URL for the AAS backend.
         backend_token_provider: Token provider for backend auth. Defaults to
                                  ForwardStrategy (forward upstream token as-is).
-        traced: Wrap each backend request in an OpenTelemetry CLIENT span and
-                propagate the W3C trace context (only when tracing is enabled).
+        traced: Instrument each backend request: an OpenTelemetry CLIENT span
+                with W3C trace context propagation, and the
+                http.client.request.duration metric (only when tracing or
+                metrics are enabled).
 
     Returns:
         Configured httpx2.AsyncClient instance
