@@ -28,6 +28,7 @@ from aas_mcp_server.logging import (
     JsonFormatter,
     TraceContextFilter,
     TraceTextFormatter,
+    uvicorn_log_config,
 )
 
 TRACE_ID = 0x4BF92F3577B34DA6A3CE929D0E0E4736
@@ -351,3 +352,86 @@ class TestLogFormatSelection:
         )
         assert calls == ["basicConfig", "warning"]
         assert "xml" in mock_warning.call_args.args[0]
+
+
+@pytest.fixture
+def restore_logging():
+    """configure_logging changes global loggers; put them back afterwards."""
+    root = logging.getLogger()
+    fastmcp_logger = logging.getLogger("fastmcp")
+    saved = (
+        root.handlers[:],
+        root.level,
+        fastmcp_logger.handlers[:],
+        fastmcp_logger.propagate,
+        fastmcp_logger.level,
+    )
+    yield
+    root.handlers[:] = saved[0]
+    root.setLevel(saved[1])
+    fastmcp_logger.handlers[:] = saved[2]
+    fastmcp_logger.propagate = saved[3]
+    fastmcp_logger.setLevel(saved[4])
+
+
+@pytest.mark.usefixtures("restore_logging")
+class TestFastMCPLogs:
+    """FastMCP's own handlers (propagate=False) must not bypass JSON mode."""
+
+    @staticmethod
+    def _fastmcp_rich_setup():
+        """What `import fastmcp` does: own handler, no propagation."""
+        fastmcp_logger = logging.getLogger("fastmcp")
+        fastmcp_logger.handlers[:] = [logging.StreamHandler(io.StringIO())]
+        fastmcp_logger.propagate = False
+        return fastmcp_logger
+
+    @patch("logging.basicConfig")
+    def test_json_routes_fastmcp_through_root(self, _mock_basic_config):
+        fastmcp_logger = self._fastmcp_rich_setup()
+        with patch.dict(os.environ, {ENV_LOG_FORMAT: "json"}, clear=True):
+            configure_logging(transport="http")
+        assert fastmcp_logger.handlers == []
+        assert fastmcp_logger.propagate is True
+
+    @patch("logging.basicConfig")
+    def test_text_leaves_fastmcp_alone(self, _mock_basic_config):
+        fastmcp_logger = self._fastmcp_rich_setup()
+        handlers = fastmcp_logger.handlers[:]
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging(transport="http")
+        assert fastmcp_logger.handlers == handlers
+        assert fastmcp_logger.propagate is False
+
+    def test_fastmcp_record_in_json_with_trace_ids(self):
+        """End to end: a fastmcp.* record inside a span becomes a JSON line."""
+        self._fastmcp_rich_setup()
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.addFilter(TraceContextFilter())
+        handler.setFormatter(JsonFormatter())
+        logging.getLogger().handlers[:] = [handler]
+
+        with patch.dict(os.environ, {ENV_LOG_FORMAT: "json"}, clear=True):
+            configure_logging(transport="http")
+        with _active_span():
+            logging.getLogger("fastmcp.server.server").warning("from fastmcp")
+
+        [entry] = [json.loads(line) for line in stream.getvalue().splitlines()]
+        assert entry["logger"] == "fastmcp.server.server"
+        assert entry["message"] == "from fastmcp"
+        assert entry["trace_id"] == TRACE_ID_HEX
+        assert entry["span_id"] == SPAN_ID_HEX
+
+    @pytest.mark.parametrize(
+        ("log_format", "expected"), [("json", "json"), ("text", "text")]
+    )
+    @patch("logging.basicConfig")
+    def test_returns_log_format(self, _mock_basic_config, log_format, expected):
+        with patch.dict(os.environ, {ENV_LOG_FORMAT: log_format}, clear=True):
+            assert configure_logging() == expected
+
+
+def test_uvicorn_log_config():
+    assert uvicorn_log_config("json") == {"log_config": None}
+    assert uvicorn_log_config("text") == {}

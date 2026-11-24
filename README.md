@@ -436,6 +436,8 @@ Application log records carry the trace context too. Inside a traced tool call, 
 
 An exception adds an `exception` field with the traceback. Logs still go to stderr, so the `stdio` transport stays protocol-clean. A log line, its audit event and its trace can be joined on `trace_id`.
 
+In JSON mode every log line is JSON, including FastMCP's own logs (which otherwise use their own Rich handler) and, on the HTTP transports, uvicorn's server and access logs. Records written inside a tool call, FastMCP's included, carry the call's `trace_id`/`span_id`. In text mode, FastMCP and uvicorn keep their usual output.
+
 Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
 
 ## Supported Components

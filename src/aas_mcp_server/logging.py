@@ -139,13 +139,33 @@ def _build_handler(log_format: str) -> logging.Handler:
     return handler
 
 
-def configure_logging(level: str = DEFAULT_LOG_LEVEL, transport: str = "stdio") -> None:
+def _route_fastmcp_logs_to_root() -> None:
+    """Send ``fastmcp.*`` records through the root handler.
+
+    On import, FastMCP gives its ``fastmcp`` logger its own Rich handlers and
+    sets ``propagate=False``, so those records would skip our filter and
+    formatter. In JSON mode that leaves Rich text between the JSON lines.
+    Removing FastMCP's handlers and propagating makes them JSON with trace
+    ids like every other record. FastMCP only reconfigures this logger when
+    ``run()`` gets a ``log_level``, which this server never passes.
+    """
+    fastmcp_logger = logging.getLogger(LOGGER_FASTMCP)
+    for handler in fastmcp_logger.handlers[:]:
+        fastmcp_logger.removeHandler(handler)
+    fastmcp_logger.propagate = True
+
+
+def configure_logging(level: str = DEFAULT_LOG_LEVEL, transport: str = "stdio") -> str:
     """
     Configure logging for the application.
 
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         transport: MCP transport type ('stdio' or 'sse')
+
+    Returns:
+        The log format in use (``text`` or ``json``), so the caller can make
+        the HTTP server's own logs follow it (see ``uvicorn_log_config``).
     """
     log_level = getattr(logging, level.upper(), logging.INFO)
     log_format, invalid_log_format = _resolve_log_format()
@@ -154,6 +174,11 @@ def configure_logging(level: str = DEFAULT_LOG_LEVEL, transport: str = "stdio") 
         level=log_level,
         handlers=[_build_handler(log_format)],
     )
+
+    # In JSON mode every line on stderr must be JSON. In text mode FastMCP
+    # keeps its own (Rich) output, as before.
+    if log_format == LOG_FORMAT_JSON:
+        _route_fastmcp_logs_to_root()
 
     if invalid_log_format is not None:
         logging.warning(
@@ -183,3 +208,18 @@ def configure_logging(level: str = DEFAULT_LOG_LEVEL, transport: str = "stdio") 
                 f"Invalid {ENV_VAR_HTTPX_LOG_LEVEL} value: '{httpx_log_level_str}'. "
                 f"Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL"
             )
+
+    return log_format
+
+
+def uvicorn_log_config(log_format: str) -> dict:
+    """Extra ``uvicorn_config`` for the HTTP transports.
+
+    Uvicorn installs its own handlers and formats when the HTTP server starts,
+    after :func:`configure_logging`. In JSON mode, ``log_config=None`` tells
+    it to leave logging alone, so its server and access logs propagate to the
+    root handler and come out as JSON too. In text mode nothing changes.
+    """
+    if log_format == LOG_FORMAT_JSON:
+        return {"log_config": None}
+    return {}
