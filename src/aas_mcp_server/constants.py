@@ -60,6 +60,9 @@ PARAM_NAME_LIMIT_CAPITALIZED = "Limit"
 # ============================================================================
 DEFAULT_MAX_LIMIT = 100  # Maximum pagination limit
 DEFAULT_LOG_LEVEL = "INFO"
+LOG_FORMAT_TEXT = "text"
+LOG_FORMAT_JSON = "json"
+DEFAULT_LOG_FORMAT = LOG_FORMAT_TEXT
 DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
 
 # ============================================================================
@@ -67,6 +70,7 @@ DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
 # ============================================================================
 ENV_CONFIG_PATH = "CONFIG_PATH"
 ENV_LOG_LEVEL = "LOG_LEVEL"
+ENV_LOG_FORMAT = "LOG_FORMAT"
 ENV_MCP_TRANSPORT = "MCP_TRANSPORT"
 ENV_AAS_BASE_URL = "AAS_BASE_URL"
 ENV_AAS_HTTP_TIMEOUT = "AAS_HTTP_TIMEOUT"
