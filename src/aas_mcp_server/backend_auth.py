@@ -45,6 +45,8 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx2
 from fastmcp.server.dependencies import get_access_token
+from opentelemetry import metrics
+from opentelemetry.metrics import Meter
 
 from .constants import (
     BACKEND_STRATEGY_CLIENT_CREDENTIALS,
@@ -60,9 +62,11 @@ from .constants import (
     ENV_OAUTH_CLIENT_ID,
     ENV_OAUTH_CLIENT_SECRET,
     ENV_OAUTH_ISSUER_URL,
+    METRIC_BACKEND_TOKEN_CACHE_LOOKUPS,
     OAUTH_GRANT_CLIENT_CREDENTIALS,
     OAUTH_GRANT_TOKEN_EXCHANGE,
     OAUTH_TOKEN_TYPE_ACCESS_TOKEN,
+    OTEL_INSTRUMENTATION_NAME,
     VALID_BACKEND_STRATEGIES,
 )
 
@@ -82,6 +86,12 @@ DEFAULT_TOKEN_LIFETIME_SECONDS = 300
 # Sized well above realistic concurrent-user counts on a single MCP server;
 # safety cap only, not a user-facing knob.
 DEFAULT_TOKEN_CACHE_MAX_ENTRIES = 1024
+
+# Attributes of the backend token cache lookup counter (see metrics.py).
+CACHE_ATTR_STRATEGY = "aas_mcp.backend_auth.strategy"
+CACHE_ATTR_RESULT = "aas_mcp.cache.result"
+CACHE_RESULT_HIT = "hit"
+CACHE_RESULT_MISS = "miss"
 
 
 def _sanitize_endpoint_for_logging(url: str) -> str:
@@ -164,10 +174,33 @@ class _KeyedTokenCache:
     verification of internal state.
     """
 
-    def __init__(self, max_entries: int = DEFAULT_TOKEN_CACHE_MAX_ENTRIES) -> None:
+    def __init__(
+        self,
+        max_entries: int = DEFAULT_TOKEN_CACHE_MAX_ENTRIES,
+        *,
+        strategy: str = "unknown",
+        meter: Meter | None = None,
+    ) -> None:
         self._entries: "OrderedDict[str, _CacheEntry]" = OrderedDict()
         self._locks: dict[str, asyncio.Lock] = {}
         self._max_entries = max_entries
+        # OpenTelemetry counter (no-op unless metrics are configured, see
+        # metrics.py). Only the strategy and hit/miss are recorded, never keys.
+        self._lookups = (
+            meter or metrics.get_meter(OTEL_INSTRUMENTATION_NAME)
+        ).create_counter(
+            METRIC_BACKEND_TOKEN_CACHE_LOOKUPS,
+            unit="{lookup}",
+            description="Backend token cache lookups, by result (hit or miss).",
+        )
+        self._hit_attributes = {
+            CACHE_ATTR_STRATEGY: strategy,
+            CACHE_ATTR_RESULT: CACHE_RESULT_HIT,
+        }
+        self._miss_attributes = {
+            CACHE_ATTR_STRATEGY: strategy,
+            CACHE_ATTR_RESULT: CACHE_RESULT_MISS,
+        }
 
     def _lock_for(self, key: str) -> asyncio.Lock:
         lock = self._locks.get(key)
@@ -190,6 +223,7 @@ class _KeyedTokenCache:
         now = time.monotonic()
         if entry is not None and now < entry.expires_at - EXPIRY_BUFFER_SECONDS:
             self._entries.move_to_end(key)
+            self._lookups.add(1, self._hit_attributes)
             logger.debug(
                 "%s: reusing cached token (%.0fs until refresh)",
                 label,
@@ -205,6 +239,8 @@ class _KeyedTokenCache:
             now = time.monotonic()
             if entry is not None and now < entry.expires_at - EXPIRY_BUFFER_SECONDS:
                 self._entries.move_to_end(key)
+                # Coalesced: another coroutine fetched while this one waited.
+                self._lookups.add(1, self._hit_attributes)
                 logger.debug(
                     "%s: reusing cached token (%.0fs until refresh)",
                     label,
@@ -212,6 +248,7 @@ class _KeyedTokenCache:
                 )
                 return entry.token
 
+            self._lookups.add(1, self._miss_attributes)
             logger.debug("%s: fetching new token", label)
             token, expires_in = await fetch()
             if not isinstance(expires_in, int) or expires_in <= 0:
@@ -303,7 +340,7 @@ class TokenExchangeStrategy:
         # Shared client — created once, reused per request to avoid connection churn.
         self._http_client = httpx2.AsyncClient()
         # Per-subject cache. Independent from any other strategy's cache.
-        self._cache = _KeyedTokenCache()
+        self._cache = _KeyedTokenCache(strategy=BACKEND_STRATEGY_TOKEN_EXCHANGE)
 
     async def get_token(self) -> str | None:
         access_token = get_access_token()
@@ -466,7 +503,7 @@ class ClientCredentialsStrategy:
         self.scope = scope
         self.audience = audience
         self._http_client = httpx2.AsyncClient()
-        self._cache = _KeyedTokenCache()
+        self._cache = _KeyedTokenCache(strategy=BACKEND_STRATEGY_CLIENT_CREDENTIALS)
 
     async def get_token(self) -> str | None:
         return await self._cache.get_or_fetch(

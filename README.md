@@ -440,6 +440,23 @@ In JSON mode every log line is JSON, including FastMCP's own logs (which otherwi
 
 Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
 
+## OpenTelemetry Metrics
+
+The server can also export metrics over OTLP. Like tracing, metrics are off by default, cost nothing when unset, and use the same `otel` extra (already in the Docker image).
+
+Metrics turn on when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set. The shared `OTEL_EXPORTER_OTLP_ENDPOINT` therefore enables both traces and metrics; set `OTEL_METRICS_EXPORTER=none` (or `OTEL_TRACES_EXPORTER=none`) to keep one of them off. `OTEL_SDK_DISABLED=true` turns both off. The export interval comes from `OTEL_METRIC_EXPORT_INTERVAL` (default 60 s), and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` / `..._HEADERS` / `..._TIMEOUT` work as usual.
+
+| Metric | Type | Unit | Attributes |
+|--------|------|------|------------|
+| `mcp.server.operation.duration` | Histogram | s | `mcp.method.name`, `gen_ai.tool.name` (tool calls to a registered tool), `error.type` (failures) |
+| `http.client.request.duration` | Histogram | s | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` |
+| `aas_mcp.backend_token.cache.lookups` | Counter | `{lookup}` | `aas_mcp.backend_auth.strategy` (`token_exchange`, `client_credentials`), `aas_mcp.cache.result` (`hit`, `miss`) |
+| `aas_mcp.rate_limit.rejections` | Counter | `{request}` | `mcp.method.name` |
+
+The first two follow the OpenTelemetry semantic conventions for MCP and HTTP clients, with the bucket boundaries those conventions recommend. A histogram's count is the number of requests, so tool call throughput and error rate come from `mcp.server.operation.duration` (filter on `error.type`), and backend latency and error rate from `http.client.request.duration`.
+
+`error.type` is the backend status code for HTTP errors (`"500"`), `RateLimitError` or `NotFoundError` for denials, and otherwise the root cause's exception class. Attributes never contain URLs, AAS identifiers, token subjects, client ids or error messages, so their cardinality stays low. `gen_ai.tool.name` is only set when the server has a tool with the requested name: a call to a made-up name is still counted (with `error.type=NotFoundError`, or `RateLimitError` if it was rejected first), but the name itself is left out, so clients cannot create new series. Like spans, metrics go only to the OTLP endpoint and never to stdout.
+
 ## Supported Components
 
 - `aas-repo` - Asset Administration Shell Repository
