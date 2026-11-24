@@ -325,3 +325,44 @@ class TestConstants:
     def test_cli_program_name_is_correct(self):
         """Test that CLI program name is correct."""
         assert CLI_PROGRAM_NAME == "aas-mcp-server"
+
+
+class TestUvicornLogConfig:
+    """LOG_FORMAT=json makes uvicorn leave logging to our root handler."""
+
+    @staticmethod
+    def _run_kwargs(transport: str, log_format: str) -> dict:
+        mock_component_config = MagicMock()
+        mock_component_config.component_name = "aas-repo"
+        mock_config = MagicMock()
+        mock_config.get_component.return_value = mock_component_config
+        mock_config.components = {"aas-repo": mock_component_config}
+        mock_mcp = MagicMock()
+        argv = [
+            "aas-mcp-server",
+            "--component",
+            "aas-repo",
+            "--base-url",
+            "http://localhost:8080",
+            "--transport",
+            transport,
+        ]
+        with (
+            patch("sys.argv", argv),
+            patch("aas_mcp_server.cli.load_config", return_value=mock_config),
+            patch("aas_mcp_server.cli.build_mcp_server", return_value=mock_mcp),
+            patch("aas_mcp_server.cli.configure_logging", return_value=log_format),
+        ):
+            main()
+        return mock_mcp.run.call_args.kwargs
+
+    @pytest.mark.parametrize("transport", ["http", "sse", "streamable-http"])
+    def test_json_disables_uvicorn_log_config(self, transport):
+        kwargs = self._run_kwargs(transport, "json")
+        assert kwargs["uvicorn_config"] == {"log_config": None}
+
+    def test_text_keeps_uvicorn_defaults(self):
+        assert "uvicorn_config" not in self._run_kwargs("http", "text")
+
+    def test_stdio_has_no_uvicorn(self):
+        assert "uvicorn_config" not in self._run_kwargs("stdio", "json")

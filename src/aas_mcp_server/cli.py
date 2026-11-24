@@ -19,7 +19,7 @@ import logging
 
 from .config import load_config, ConfigError
 from .server import build_mcp_server
-from .logging import configure_logging
+from .logging import configure_logging, uvicorn_log_config
 
 
 # Environment variables
@@ -115,7 +115,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Setup logging
-    configure_logging(args.log_level, args.transport)
+    log_format = configure_logging(args.log_level, args.transport)
     logger = logging.getLogger(__name__)
 
     # Load configuration
@@ -171,6 +171,9 @@ def main() -> None:
     if args.transport in ["http", "sse", "streamable-http"]:
         transport_kwargs["host"] = args.host
         transport_kwargs["port"] = args.port
+        uvicorn_config = uvicorn_log_config(log_format)
+        if uvicorn_config:
+            transport_kwargs["uvicorn_config"] = uvicorn_config
 
     # Run the server
     logger.info(f"Starting MCP server with transport: {args.transport}")
