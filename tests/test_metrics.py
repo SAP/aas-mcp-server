@@ -13,7 +13,8 @@ import asyncio
 import builtins
 import sys
 import types
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
 import pytest
@@ -365,6 +366,125 @@ class TestToolCallMetrics:
         assert tool_point.attributes["error.type"] == "RateLimitError"
         # Rejected before reaching the backend.
         assert _points(reader, "http.client.request.duration") == []
+
+    async def test_unknown_tool_names_do_not_create_series(self, reader):
+        """Made-up tool names are client input: they must not become labels."""
+        async with Client(_server(reader)) as client:
+            for name in INVALID_TOOL_NAMES:
+                with pytest.raises(ToolError):
+                    await client.call_tool(name, {})
+            await client.call_tool("GetShell", {"aasIdentifier": AAS_ID})
+
+        tool_points = [
+            p
+            for p in _points(reader, "mcp.server.operation.duration")
+            if p.attributes["mcp.method.name"] == "tools/call"
+        ]
+        assert {p.attributes.get("gen_ai.tool.name") for p in tool_points} == {
+            None,
+            "GetShell",
+        }
+        [unknown] = [p for p in tool_points if "gen_ai.tool.name" not in p.attributes]
+        assert dict(unknown.attributes) == {
+            "mcp.method.name": "tools/call",
+            "error.type": "NotFoundError",
+        }
+        assert unknown.count == len(INVALID_TOOL_NAMES)
+        _assert_no_invalid_names(reader)
+
+    async def test_rate_limited_unknown_names_do_not_create_series(self, reader):
+        """The rate limiter runs after this middleware: rejected calls are
+        never validated by FastMCP, so the name check must not rely on it."""
+        limiter = RateLimitingMiddleware(
+            max_requests_per_second=0.001, burst_capacity=1
+        )
+        async with Client(_server(reader, rate_limiter=limiter)) as client:
+            for name in [*INVALID_TOOL_NAMES, "GetShell"]:
+                with pytest.raises(MCPError, match="Rate limit exceeded"):
+                    await client.call_tool(name, {"aasIdentifier": AAS_ID})
+
+        tool_points = [
+            p
+            for p in _points(reader, "mcp.server.operation.duration")
+            if p.attributes["mcp.method.name"] == "tools/call"
+        ]
+        by_name = {p.attributes.get("gen_ai.tool.name"): p for p in tool_points}
+        assert set(by_name) == {None, "GetShell"}
+        assert by_name[None].count == len(INVALID_TOOL_NAMES)
+        assert by_name[None].attributes["error.type"] == "RateLimitError"
+        # A real tool keeps its name even when rate limited.
+        assert by_name["GetShell"].attributes["error.type"] == "RateLimitError"
+        [rejected] = [
+            p
+            for p in _points(reader, "aas_mcp.rate_limit.rejections")
+            if p.attributes["mcp.method.name"] == "tools/call"
+        ]
+        assert rejected.value == len(INVALID_TOOL_NAMES) + 1
+        _assert_no_invalid_names(reader)
+
+
+INVALID_TOOL_NAMES = ["DoesNotExist", "x" * 200, "GetShell; DROP TABLE"]
+
+
+def _assert_no_invalid_names(reader) -> None:
+    data = reader.get_metrics_data()
+    for resource_metrics in data.resource_metrics:
+        for scope_metrics in resource_metrics.scope_metrics:
+            for metric in scope_metrics.metrics:
+                for point in metric.data.data_points:
+                    for value in point.attributes.values():
+                        assert str(value) not in INVALID_TOOL_NAMES
+
+
+@pytest.mark.asyncio
+class TestRegisteredToolName:
+    """Edge cases of the registered-name lookup, without a server."""
+
+    @staticmethod
+    def _context(name, lookup=None):
+        server = MagicMock()
+        server.get_tool = AsyncMock(side_effect=lookup)
+        fastmcp_context = None if lookup is None else SimpleNamespace(fastmcp=server)
+        return (
+            SimpleNamespace(
+                message=SimpleNamespace(name=name), fastmcp_context=fastmcp_context
+            ),
+            server,
+        )
+
+    async def test_known_name_is_looked_up_once(self, reader):
+        middleware = MetricsMiddleware(meter=reader.meter)
+        context, server = self._context("GetShell", lookup=lambda name: object())
+        assert await middleware._registered_tool_name(context) == "GetShell"
+        assert await middleware._registered_tool_name(context) == "GetShell"
+        server.get_tool.assert_awaited_once_with("GetShell")
+
+    async def test_unknown_name_is_not_cached(self, reader):
+        middleware = MetricsMiddleware(meter=reader.meter)
+        context, server = self._context("Nope", lookup=lambda name: None)
+        assert await middleware._registered_tool_name(context) is None
+        assert await middleware._registered_tool_name(context) is None
+        assert server.get_tool.await_count == 2
+
+    @pytest.mark.parametrize("name", [None, "", 42])
+    async def test_missing_or_non_string_name(self, reader, name):
+        middleware = MetricsMiddleware(meter=reader.meter)
+        context, server = self._context(name, lookup=lambda n: object())
+        assert await middleware._registered_tool_name(context) is None
+        server.get_tool.assert_not_awaited()
+
+    async def test_no_fastmcp_context(self, reader):
+        middleware = MetricsMiddleware(meter=reader.meter)
+        context, _ = self._context("GetShell")
+        assert await middleware._registered_tool_name(context) is None
+
+    async def test_lookup_error_leaves_name_out(self, reader):
+        def boom(name):
+            raise RuntimeError("lookup failed")
+
+        middleware = MetricsMiddleware(meter=reader.meter)
+        context, _ = self._context("GetShell", lookup=boom)
+        assert await middleware._registered_tool_name(context) is None
 
 
 def test_error_type_uses_root_cause_class():

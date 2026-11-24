@@ -14,7 +14,7 @@ Instruments:
 
 * ``mcp.server.operation.duration`` (histogram, s): every MCP request seen by
   :class:`MetricsMiddleware`, with ``mcp.method.name``, ``gen_ai.tool.name``
-  for tool calls and ``error.type`` on failure. Its count is the request count.
+  for calls to a registered tool and ``error.type`` on failure. Its count is the request count.
 * ``http.client.request.duration`` (histogram, s): every request to the AAS
   backend, recorded by :class:`~aas_mcp_server.tracing.TracedAsyncClient`.
 * ``aas_mcp.backend_token.cache.lookups`` (counter): backend token cache hits
@@ -151,6 +151,13 @@ class MetricsMiddleware(Middleware):
 
     Place it first in the middleware list so that requests the rate limiter
     rejects are measured too.
+
+    ``gen_ai.tool.name`` is only set for tools the server actually has. The
+    requested name is client input and this middleware runs before both tool
+    lookup and rate limiting, so recording it as-is would let a client create
+    a new metric series per made-up name. Unknown names are left out; such
+    calls still show up with ``error.type`` (``NotFoundError`` or
+    ``RateLimitError``).
     """
 
     def __init__(self, meter: Meter | None = None) -> None:
@@ -166,25 +173,60 @@ class MetricsMiddleware(Middleware):
             unit="{request}",
             description="MCP requests rejected by the rate limiter.",
         )
+        # Names confirmed to belong to a registered tool. Bounded by the
+        # server's tool list, since only confirmed names are added.
+        self._known_tools: set[str] = set()
+
+    async def _registered_tool_name(
+        self, context: MiddlewareContext[Any]
+    ) -> str | None:
+        """The requested tool name if the server has such a tool, else None."""
+        name = getattr(context.message, "name", None)
+        if not isinstance(name, str) or not name:
+            return None
+        if name in self._known_tools:
+            return name
+        fastmcp_context = context.fastmcp_context
+        if fastmcp_context is None:
+            return None
+        try:
+            tool = await fastmcp_context.fastmcp.get_tool(name)
+        except Exception:
+            # Never let metrics break or change the outcome of a request.
+            return None
+        if tool is None:
+            return None
+        self._known_tools.add(name)
+        return name
+
+    async def _record(
+        self,
+        context: MiddlewareContext[Any],
+        method: str,
+        started: float,
+        error_type: str | None = None,
+    ) -> None:
+        duration = time.perf_counter() - started
+        attributes: dict[str, Any] = {"mcp.method.name": method}
+        if method == MCP_METHOD_TOOLS_CALL:
+            tool_name = await self._registered_tool_name(context)
+            if tool_name is not None:
+                attributes["gen_ai.tool.name"] = tool_name
+        if error_type is not None:
+            attributes["error.type"] = error_type
+        self._duration.record(duration, attributes)
 
     async def on_request(
         self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]
     ) -> Any:
         method = context.method or "unknown"
-        attributes: dict[str, Any] = {"mcp.method.name": method}
-        if method == MCP_METHOD_TOOLS_CALL:
-            tool_name = getattr(context.message, "name", None)
-            if tool_name:
-                attributes["gen_ai.tool.name"] = tool_name
-
         started = time.perf_counter()
         try:
             result = await call_next(context)
         except Exception as exc:
-            attributes["error.type"] = _error_type(exc)
-            self._duration.record(time.perf_counter() - started, attributes)
+            await self._record(context, method, started, _error_type(exc))
             if _is_rate_limited(exc):
                 self._rate_limited.add(1, {"mcp.method.name": method})
             raise
-        self._duration.record(time.perf_counter() - started, attributes)
+        await self._record(context, method, started)
         return result

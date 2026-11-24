@@ -427,14 +427,14 @@ Metrics turn on when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRIC
 
 | Metric | Type | Unit | Attributes |
 |--------|------|------|------------|
-| `mcp.server.operation.duration` | Histogram | s | `mcp.method.name`, `gen_ai.tool.name` (tool calls), `error.type` (failures) |
+| `mcp.server.operation.duration` | Histogram | s | `mcp.method.name`, `gen_ai.tool.name` (tool calls to a registered tool), `error.type` (failures) |
 | `http.client.request.duration` | Histogram | s | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` |
 | `aas_mcp.backend_token.cache.lookups` | Counter | `{lookup}` | `aas_mcp.backend_auth.strategy` (`token_exchange`, `client_credentials`), `aas_mcp.cache.result` (`hit`, `miss`) |
 | `aas_mcp.rate_limit.rejections` | Counter | `{request}` | `mcp.method.name` |
 
 The first two follow the OpenTelemetry semantic conventions for MCP and HTTP clients, with the bucket boundaries those conventions recommend. A histogram's count is the number of requests, so tool call throughput and error rate come from `mcp.server.operation.duration` (filter on `error.type`), and backend latency and error rate from `http.client.request.duration`.
 
-`error.type` is the backend status code for HTTP errors (`"500"`), `RateLimitError` or `NotFoundError` for denials, and otherwise the root cause's exception class. Attributes never contain URLs, AAS identifiers, token subjects, client ids or error messages, so their cardinality stays low. Like spans, metrics go only to the OTLP endpoint and never to stdout.
+`error.type` is the backend status code for HTTP errors (`"500"`), `RateLimitError` or `NotFoundError` for denials, and otherwise the root cause's exception class. Attributes never contain URLs, AAS identifiers, token subjects, client ids or error messages, so their cardinality stays low. `gen_ai.tool.name` is only set when the server has a tool with the requested name: a call to a made-up name is still counted (with `error.type=NotFoundError`, or `RateLimitError` if it was rejected first), but the name itself is left out, so clients cannot create new series. Like spans, metrics go only to the OTLP endpoint and never to stdout.
 
 ## Supported Components
 
