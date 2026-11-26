@@ -498,6 +498,11 @@ def build_mcp_server(
                 transport=transport,
             ),
         )
+        logger.info(
+            "Audit logging enabled for component %s; tool-call audit events go to %s",
+            component_config.component_name,
+            "stderr" if transport == "stdio" else "stdout",
+        )
 
     # Metrics go first (outermost) so rate-limited requests are measured too.
     if meter_provider is not None:
