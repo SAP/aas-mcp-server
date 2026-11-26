@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/SAP/aas-mcp-server/compare/v0.3.0...v0.4.0) (2026-11-26)
+
+
+### Features
+
+* add opt-in OpenTelemetry metrics over OTLP ([#141](https://github.com/SAP/aas-mcp-server/issues/141)) ([47b5d18](https://github.com/SAP/aas-mcp-server/commit/47b5d18f42b6c4bf93212c9bc5b259525b1e3561))
+* add opt-in OpenTelemetry tracing for tool calls and backend requests ([#137](https://github.com/SAP/aas-mcp-server/issues/137)) ([f36c8ea](https://github.com/SAP/aas-mcp-server/commit/f36c8ea8f23025d14e7438969d6d9369a3ef44dd))
+* add opt-in structured audit logging for tool calls ([#136](https://github.com/SAP/aas-mcp-server/issues/136)) ([4f0d86e](https://github.com/SAP/aas-mcp-server/commit/4f0d86e89d6d5f6f9abdac924e29c9bc577a4e45))
+* add trace_id/span_id to log records and an optional JSON log format ([#140](https://github.com/SAP/aas-mcp-server/issues/140)) ([557ae8d](https://github.com/SAP/aas-mcp-server/commit/557ae8d44efab14a0f73c7ca9e37b06b466c6711))
+* fill audit trace_id from the active OpenTelemetry span ([#139](https://github.com/SAP/aas-mcp-server/issues/139)) ([1fc1cda](https://github.com/SAP/aas-mcp-server/commit/1fc1cda20c3db2c80da2a6cc87c7703d9fe7030b))
+
+
+### Bug Fixes
+
+* **deps:** update dependency py-key-value-aio to &gt;=0.5.0,&lt;0.6.0 ([#131](https://github.com/SAP/aas-mcp-server/issues/131)) ([fcd5272](https://github.com/SAP/aas-mcp-server/commit/fcd5272e5ab6621ce55469d37f14d072c82382b5))
+
 ## [0.3.0](https://github.com/SAP/aas-mcp-server/compare/v0.2.0...v0.3.0) (2026-11-09)
 
 
