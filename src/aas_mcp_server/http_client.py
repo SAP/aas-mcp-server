@@ -33,14 +33,17 @@ from fastmcp.server.dependencies import get_http_headers
 from .tracing import TracedAsyncClient
 from .backend_auth import BackendTokenProvider, ForwardStrategy
 from .constants import (
+    DEFAULT_HTTP_MAX_RETRIES,
     DEFAULT_HTTP_TIMEOUT,
     ENV_AAS_FORWARD_HEADERS,
     ENV_AAS_HTTP_HEADERS,
+    ENV_AAS_HTTP_MAX_RETRIES,
     ENV_AAS_HTTP_TIMEOUT,
     FASTMCP_EXCLUDED_HEADERS,
     FORWARDED_HEADER_DENYLIST,
     FORWARDED_HEADER_PROXY_PREFIX,
 )
+from .retry_transport import RetryTransport
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +346,21 @@ def build_async_client(
     headers = {**_configured_headers(), HEADER_ACCEPT: CONTENT_TYPE_JSON}
     forward_headers = _configured_forward_headers()
 
+    _raw_retries = os.getenv(ENV_AAS_HTTP_MAX_RETRIES, str(DEFAULT_HTTP_MAX_RETRIES))
+    try:
+        max_retries = int(_raw_retries)
+    except ValueError:
+        raise ValueError(
+            f"Invalid value for AAS_HTTP_MAX_RETRIES: {_raw_retries!r} is not an integer. "
+            f"Use 0 to disable retries (default: {DEFAULT_HTTP_MAX_RETRIES})."
+        )
+    if max_retries < 0:
+        raise ValueError(
+            f"Invalid value for AAS_HTTP_MAX_RETRIES: {max_retries!r} must be >= 0."
+        )
+
     client_class = TracedAsyncClient if traced else httpx2.AsyncClient
+    http_transport = RetryTransport(httpx2.AsyncHTTPTransport(), max_retries=max_retries)
     return client_class(
         base_url=base_url,
         headers=headers,
@@ -352,4 +369,5 @@ def build_async_client(
         ),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
+        transport=http_transport,
     )
