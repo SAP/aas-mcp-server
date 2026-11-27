@@ -351,7 +351,7 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 
 The server acts as an OAuth 2.1 Authorization Server via FastMCP's `OIDCProxy`. It exposes a standard PKCE flow that proxies to your upstream IdP. MCP clients (Claude CLI, OpenCode, etc.) register via Dynamic Client Registration and complete a browser-based PKCE flow automatically.
 
-The validated Bearer token is forwarded to the AAS backend on every outbound request. Set `BACKEND_AUTH_AUDIENCE` if the backend requires a different token audience (token exchange via RFC 8693).
+The validated Bearer token is forwarded to the AAS backend on every outbound request. For advanced backend auth scenarios (token exchange, client credentials, or no auth), see [docs/backend-auth.md](docs/backend-auth.md).
 
 ## Audit Logging
 
