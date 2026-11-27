@@ -114,22 +114,21 @@ def _sanitize_endpoint_for_logging(url: str) -> str:
     an integer — the same conditions build_backend_token_provider() rejects.
     Error messages never include the raw URL to avoid exposing embedded credentials.
     """
-    parsed = urlparse(url)
-    host = parsed.hostname
     try:
+        parsed = urlparse(url)
+        host = parsed.hostname
         port = parsed.port  # raises ValueError when the port is not an integer
     except ValueError:
         raise ValueError(
-            f"Token endpoint URL has an invalid port. "
+            "Token endpoint URL has an invalid port. "
             "Expected a full URL with scheme and host, "
             "e.g. https://idp.example.com/oauth2/token."
-        )
+        ) from None
     if not parsed.scheme or not host:
         raise ValueError(
-            f"Token endpoint URL is missing scheme or host "
-            f"(scheme={parsed.scheme!r}, host={host!r}). "
+            "Token endpoint URL is missing scheme or host. "
             "Expected a full URL, e.g. https://idp.example.com/oauth2/token."
-        )
+        ) from None
     if ":" in host:
         host = f"[{host}]"
     netloc = f"{host}:{port}" if port else host

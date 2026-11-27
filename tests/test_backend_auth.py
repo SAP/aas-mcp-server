@@ -1836,20 +1836,28 @@ class TestSanitizeEndpointForLogging:
             _sanitize_endpoint_for_logging(bad)
 
     def test_invalid_port_error_does_not_expose_raw_url(self):
+        import traceback as _tb
+
         url = "https://user:pass@idp.example.com:notaport/oauth/token"
         with pytest.raises(ValueError) as exc_info:
             _sanitize_endpoint_for_logging(url)
-        assert url not in str(exc_info.value)
-        assert "pass" not in str(exc_info.value)
-        assert "user" not in str(exc_info.value)
+        full_tb = "".join(_tb.format_exception(exc_info.type, exc_info.value, exc_info.tb))
+        assert url not in full_tb
+        assert "pass" not in full_tb
+        assert "user" not in full_tb
+        assert "notaport" not in full_tb
 
     def test_missing_host_error_does_not_expose_raw_url(self):
+        import traceback as _tb
+
         # URL with userinfo but empty host — parsed.hostname is None
         url = "https://user:pass@/path"
         with pytest.raises(ValueError) as exc_info:
             _sanitize_endpoint_for_logging(url)
-        assert "pass" not in str(exc_info.value)
-        assert url not in str(exc_info.value)
+        full_tb = "".join(_tb.format_exception(exc_info.type, exc_info.value, exc_info.tb))
+        assert url not in full_tb
+        assert "pass" not in full_tb
+        assert "user" not in full_tb
 
 
 class TestStrategiesDoNotLeakRawEndpoint:
