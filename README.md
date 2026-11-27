@@ -344,6 +344,7 @@ server validates inbound Bearer tokens and forwards them to the AAS backend.
 | `OAUTH_SESSION_STORE_URL` | Optional | External store for OAuth session state. Supports `redis://`, `rediss://`, `postgresql://`. Defaults to in-memory (state lost on restart). |
 | `MCP_RATE_LIMIT_PER_MINUTE` | Optional | Max requests per client per minute. Default: 60. |
 | `AUDIT_LOG_ENABLED` | Optional | Emit a structured JSON audit event per tool call (see [Audit Logging](#audit-logging)). Default: `false`. |
+| `LOG_FORMAT` | Optional | `text` (default) or `json` (one JSON object per line). Both carry the trace context when there is one (see [Log correlation](#log-correlation)). |
 | `AAS_VALIDATE_OUTPUT` | Optional | Validate tool outputs against generated OpenAPI schemas. Default: `true`; set to `false` to advertise a permissive output schema and avoid validation overhead for large nested AAS responses. |
 
 ### How it works
@@ -417,7 +418,44 @@ The W3C `traceparent`/`tracestate` headers are injected into every request to th
 
 With [audit logging](#audit-logging) on, each audit event carries the same trace id in `trace_id`, so an audit line can be looked up in the tracing backend.
 
+### Log correlation
+
+Application log records carry the trace context too. Inside a traced tool call, each record gets the W3C `trace_id` and `span_id` of the active span (the tool span, or the backend request span while that request runs). The ids also come through when tracing is off but the MCP client sends a `traceparent`. With no trace context, the output is the same as before.
+
+`LOG_FORMAT=text` (default) appends the ids to the line:
+
+```text
+2026-11-23 11:38:41,278 INFO aas_mcp_server.http_client: ... trace_id=4bf92f3577b34da6a3ce929d0e0e4736 span_id=00f067aa0ba902b7
+```
+
+`LOG_FORMAT=json` writes one JSON object per line for log collectors, with `trace_id`/`span_id` set to `null` outside a trace:
+
+```json
+{"timestamp":"2026-11-23T11:38:41.278+00:00","level":"INFO","logger":"aas_mcp_server.http_client","message":"...","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
+```
+
+An exception adds an `exception` field with the traceback. Logs still go to stderr, so the `stdio` transport stays protocol-clean. A log line, its audit event and its trace can be joined on `trace_id`.
+
+In JSON mode every log line is JSON, including FastMCP's own logs (which otherwise use their own Rich handler) and, on the HTTP transports, uvicorn's server and access logs. Records written inside a tool call, FastMCP's included, carry the call's `trace_id`/`span_id`. In text mode, FastMCP and uvicorn keep their usual output.
+
 Spans go only to the OTLP endpoint and never to stdout, so the `stdio` transport stays protocol-clean. Spans carry no request or response bodies, query values, headers or exception messages.
+
+## OpenTelemetry Metrics
+
+The server can also export metrics over OTLP. Like tracing, metrics are off by default, cost nothing when unset, and use the same `otel` extra (already in the Docker image).
+
+Metrics turn on when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set. The shared `OTEL_EXPORTER_OTLP_ENDPOINT` therefore enables both traces and metrics; set `OTEL_METRICS_EXPORTER=none` (or `OTEL_TRACES_EXPORTER=none`) to keep one of them off. `OTEL_SDK_DISABLED=true` turns both off. The export interval comes from `OTEL_METRIC_EXPORT_INTERVAL` (default 60 s), and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` / `..._HEADERS` / `..._TIMEOUT` work as usual.
+
+| Metric | Type | Unit | Attributes |
+|--------|------|------|------------|
+| `mcp.server.operation.duration` | Histogram | s | `mcp.method.name`, `gen_ai.tool.name` (tool calls to a registered tool), `error.type` (failures) |
+| `http.client.request.duration` | Histogram | s | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` |
+| `aas_mcp.backend_token.cache.lookups` | Counter | `{lookup}` | `aas_mcp.backend_auth.strategy` (`token_exchange`, `client_credentials`), `aas_mcp.cache.result` (`hit`, `miss`) |
+| `aas_mcp.rate_limit.rejections` | Counter | `{request}` | `mcp.method.name` |
+
+The first two follow the OpenTelemetry semantic conventions for MCP and HTTP clients, with the bucket boundaries those conventions recommend. A histogram's count is the number of requests, so tool call throughput and error rate come from `mcp.server.operation.duration` (filter on `error.type`), and backend latency and error rate from `http.client.request.duration`.
+
+`error.type` is the backend status code for HTTP errors (`"500"`), `RateLimitError` or `NotFoundError` for denials, and otherwise the root cause's exception class. Attributes never contain URLs, AAS identifiers, token subjects, client ids or error messages, so their cardinality stays low. `gen_ai.tool.name` is only set when the server has a tool with the requested name: a call to a made-up name is still counted (with `error.type=NotFoundError`, or `RateLimitError` if it was rejected first), but the name itself is left out, so clients cannot create new series. Like spans, metrics go only to the OTLP endpoint and never to stdout.
 
 ## Supported Components
 

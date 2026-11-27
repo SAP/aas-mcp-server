@@ -60,6 +60,9 @@ PARAM_NAME_LIMIT_CAPITALIZED = "Limit"
 # ============================================================================
 DEFAULT_MAX_LIMIT = 100  # Maximum pagination limit
 DEFAULT_LOG_LEVEL = "INFO"
+LOG_FORMAT_TEXT = "text"
+LOG_FORMAT_JSON = "json"
+DEFAULT_LOG_FORMAT = LOG_FORMAT_TEXT
 DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
 
 # ============================================================================
@@ -67,6 +70,7 @@ DEFAULT_CONFIG_PATH = "/app/config/config.yaml"
 # ============================================================================
 ENV_CONFIG_PATH = "CONFIG_PATH"
 ENV_LOG_LEVEL = "LOG_LEVEL"
+ENV_LOG_FORMAT = "LOG_FORMAT"
 ENV_MCP_TRANSPORT = "MCP_TRANSPORT"
 ENV_AAS_BASE_URL = "AAS_BASE_URL"
 ENV_AAS_HTTP_TIMEOUT = "AAS_HTTP_TIMEOUT"
@@ -166,6 +170,9 @@ ENV_OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
 ENV_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
 ENV_OTEL_EXPORTER_OTLP_PROTOCOL = "OTEL_EXPORTER_OTLP_PROTOCOL"
 ENV_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
+ENV_OTEL_METRICS_EXPORTER = "OTEL_METRICS_EXPORTER"
+ENV_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+ENV_OTEL_EXPORTER_OTLP_METRICS_PROTOCOL = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"
 
 OTEL_PROTOCOL_HTTP_PROTOBUF = "http/protobuf"
 OTEL_PROTOCOL_GRPC = "grpc"
@@ -179,6 +186,46 @@ OTEL_EXTRA_HINT = "pip install 'aas-mcp-server[otel]'"
 
 # Lowest HTTP status recorded as an error on backend CLIENT spans
 HTTP_ERROR_STATUS_MIN = 400
+
+# OpenTelemetry metrics (opt-in, see metrics.py). The first two follow the
+# OpenTelemetry semantic conventions; the last two are specific to this server.
+METRIC_MCP_SERVER_OPERATION_DURATION = "mcp.server.operation.duration"
+METRIC_HTTP_CLIENT_REQUEST_DURATION = "http.client.request.duration"
+METRIC_BACKEND_TOKEN_CACHE_LOOKUPS = "aas_mcp.backend_token.cache.lookups"
+METRIC_RATE_LIMIT_REJECTIONS = "aas_mcp.rate_limit.rejections"
+# Bucket boundaries (seconds) recommended by the semantic conventions.
+MCP_OPERATION_DURATION_BUCKETS = (
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    0.2,
+    0.5,
+    1,
+    2,
+    5,
+    10,
+    30,
+    60,
+    120,
+    300,
+)
+HTTP_CLIENT_DURATION_BUCKETS = (
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.075,
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    1,
+    2.5,
+    5,
+    7.5,
+    10,
+)
 
 # ============================================================================
 # Path and Filter Delimiters (for openapi_loader)

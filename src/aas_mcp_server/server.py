@@ -54,6 +54,7 @@ from .http_client import build_async_client
 from .tool_curation import curate_openapi_spec, prune_unused_schemas
 from .logging import configure_logging
 from .audit import AuditMiddleware, ToolOperationIndex
+from .metrics import MetricsMiddleware, configure_metrics
 from .tracing import configure_tracing
 from .constants import (
     DEFAULT_AUDIT_LOG_ENABLED,
@@ -458,11 +459,16 @@ def build_mcp_server(
     # spans then become real, and backend requests get child CLIENT spans.
     tracer_provider = configure_tracing()
 
+    # OpenTelemetry metrics (opt-in, issue #134): same OTEL_* rules, with
+    # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT / OTEL_METRICS_EXPORTER.
+    meter_provider = configure_metrics()
+    instrumented = tracer_provider is not None or meter_provider is not None
+
     # Build HTTP client with the selected backend token strategy
     client = build_async_client(
         base_url=base_url,
         backend_token_provider=backend_token_provider,
-        **({"traced": True} if tracer_provider is not None else {}),
+        **({"traced": True} if instrumented else {}),
     )
 
     # Build auth provider (None when OAuth not configured)
@@ -492,6 +498,15 @@ def build_mcp_server(
                 transport=transport,
             ),
         )
+        logger.info(
+            "Audit logging enabled for component %s; tool-call audit events go to %s",
+            component_config.component_name,
+            "stderr" if transport == "stdio" else "stdout",
+        )
+
+    # Metrics go first (outermost) so rate-limited requests are measured too.
+    if meter_provider is not None:
+        middleware.insert(0, MetricsMiddleware())
 
     # The audit index learns each generated tool's backend operation through
     # FastMCP's component hook; only passed when auditing is on.
