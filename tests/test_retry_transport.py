@@ -252,6 +252,59 @@ async def test_deadline_stops_status_retry_when_budget_elapsed_during_request():
 
 
 @pytest.mark.asyncio
+async def test_deadline_stops_exception_retry_after_sleep():
+    """Deadline expiring during backoff sleep stops the exception retry."""
+    # Sequence: deadline_init → _delay budget check (still OK) → post-sleep check (past deadline)
+    t0 = 1000.0
+    budget = 30.0
+    # _delay sees budget_remaining = 29.0 (raw 0.5 fits) → sleeps
+    # post-sleep monotonic returns t0+31 (past deadline) → raises
+    monotonic_values = iter([t0, t0 + 1.0, t0 + 31.0])
+
+    with patch("aas_mcp_server.retry_transport.time.monotonic", side_effect=monotonic_values):
+        transport, backend = _transport(
+            [httpx2.ConnectError("refused"), httpx2.Response(200)],
+            max_retries=3,
+            budget=budget,
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            with pytest.raises(httpx2.ConnectError):
+                await transport.handle_async_request(_request())
+
+    mock_sleep.assert_called_once()
+    # Sleep ran but deadline expired → no second attempt.
+    assert backend.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deadline_stops_status_retry_after_sleep_response_not_closed():
+    """Deadline expiring during backoff sleep stops the status retry and returns an open response."""
+    t0 = 1000.0
+    budget = 30.0
+    r503 = httpx2.Response(503)
+    # _retry_after_delay sees budget_remaining = 29.0 (delay 0.5 fits) → sleeps
+    # post-sleep monotonic returns t0+31 (past deadline) → returns r503 without closing
+    monotonic_values = iter([t0, t0 + 1.0, t0 + 31.0])
+
+    with patch("aas_mcp_server.retry_transport.time.monotonic", side_effect=monotonic_values):
+        transport, backend = _transport(
+            [r503, httpx2.Response(200)],
+            max_retries=3,
+            budget=budget,
+        )
+        with patch.object(r503, "aclose", new_callable=AsyncMock) as mock_aclose:
+            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                resp = await transport.handle_async_request(_request())
+
+    assert resp.status_code == 503
+    mock_sleep.assert_called_once()
+    # Deadline expired during sleep → response returned without being closed.
+    mock_aclose.assert_not_called()
+    assert backend.call_count == 1
+
+
+
+@pytest.mark.asyncio
 async def test_backoff_not_shortened_to_fit_budget():
     """Backoff delay that exceeds the remaining budget skips the retry (not shortened)."""
     # budget=1.0 → deadline = monotonic() + 1.0
