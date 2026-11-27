@@ -33,6 +33,16 @@ The server probes the environment at startup using an ordered rule chain (simila
 
 `none` is never auto-selected — it must always be set explicitly.
 
+> **Migration note (breaking change):** Earlier versions of the server triggered `token_exchange` automatically
+> when only `BACKEND_AUTH_AUDIENCE` was set (relying on `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` for the
+> credentials). This behaviour has been removed. Auto-detection now requires all three variables —
+> `BACKEND_AUTH_CLIENT_ID`, `BACKEND_AUTH_CLIENT_SECRET`, and `BACKEND_AUTH_AUDIENCE` — to be set together.
+>
+> If you are upgrading from a configuration that relied on `BACKEND_AUTH_AUDIENCE` alone triggering
+> `token_exchange`, you must add `BACKEND_AUTH_CLIENT_ID` and `BACKEND_AUTH_CLIENT_SECRET` explicitly
+> (or set `BACKEND_AUTH_STRATEGY=token_exchange` to skip probing and configure the strategy directly).
+> Without this change, the server will silently fall back to the `forward` strategy.
+
 The server logs what it selected and why at startup:
 
 ```

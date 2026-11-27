@@ -671,10 +671,18 @@ def _resolve_token_endpoint(strategy_name: str) -> str:
     """Resolve the token endpoint URL from env vars, falling back to OIDC discovery.
 
     Raises ValueError with an actionable message when neither
-    BACKEND_AUTH_TOKEN_ENDPOINT nor OAUTH_ISSUER_URL is set.
+    BACKEND_AUTH_TOKEN_ENDPOINT nor OAUTH_ISSUER_URL is set, or when the
+    resolved URL is not a valid scheme+host URL.
     """
     token_endpoint = os.getenv(ENV_BACKEND_AUTH_TOKEN_ENDPOINT, "").strip() or None
     if token_endpoint:
+        try:
+            _sanitize_endpoint_for_logging(token_endpoint)
+        except ValueError as exc:
+            raise ValueError(
+                f"BACKEND_AUTH_TOKEN_ENDPOINT={token_endpoint!r} is not a valid URL. "
+                "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
+            ) from exc
         return token_endpoint
     issuer_url = os.getenv(ENV_OAUTH_ISSUER_URL, "").strip() or None
     if not issuer_url:
@@ -729,6 +737,17 @@ class TokenExchangeConfig:
     token_endpoint: str
     scope: str | None
 
+    def __repr__(self) -> str:
+        return (
+            f"TokenExchangeConfig("
+            f"audience={self.audience!r}, "
+            f"client_id={self.client_id!r}, "
+            f"client_secret='[REDACTED]', "
+            f"token_endpoint={self.token_endpoint!r}, "
+            f"scope={self.scope!r}"
+            f")"
+        )
+
     @classmethod
     def from_env(cls) -> "TokenExchangeConfig":
         audience = os.getenv(ENV_BACKEND_AUTH_AUDIENCE, "").strip() or None
@@ -738,13 +757,6 @@ class TokenExchangeConfig:
                 "Set it to the OAuth client ID of the AAS backend application."
             )
         token_endpoint = _resolve_token_endpoint("token_exchange")
-        try:
-            _sanitize_endpoint_for_logging(token_endpoint)
-        except ValueError as exc:
-            raise ValueError(
-                f"BACKEND_AUTH_TOKEN_ENDPOINT={token_endpoint!r} is not a valid URL. "
-                "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
-            ) from exc
         client_id, client_secret = _resolve_client_credentials("Token exchange")
         scope = os.getenv(ENV_BACKEND_AUTH_SCOPE, "").strip() or None
         return cls(
@@ -766,16 +778,20 @@ class ClientCredentialsConfig:
     scope: str | None
     audience: str | None
 
+    def __repr__(self) -> str:
+        return (
+            f"ClientCredentialsConfig("
+            f"client_id={self.client_id!r}, "
+            f"client_secret='[REDACTED]', "
+            f"token_endpoint={self.token_endpoint!r}, "
+            f"scope={self.scope!r}, "
+            f"audience={self.audience!r}"
+            f")"
+        )
+
     @classmethod
     def from_env(cls) -> "ClientCredentialsConfig":
         token_endpoint = _resolve_token_endpoint("client_credentials")
-        try:
-            _sanitize_endpoint_for_logging(token_endpoint)
-        except ValueError as exc:
-            raise ValueError(
-                f"BACKEND_AUTH_TOKEN_ENDPOINT={token_endpoint!r} is not a valid URL. "
-                "Expected a full URL with scheme and host, e.g. https://idp.example.com/oauth2/token."
-            ) from exc
         client_id, client_secret = _resolve_client_credentials("Client credentials strategy")
         scope = os.getenv(ENV_BACKEND_AUTH_SCOPE, "").strip() or None
         audience = os.getenv(ENV_BACKEND_AUTH_AUDIENCE, "").strip() or None
@@ -837,6 +853,16 @@ def _probe_strategy() -> str:
             "To override, set BACKEND_AUTH_STRATEGY explicitly."
         )
         return BACKEND_STRATEGY_CLIENT_CREDENTIALS
+
+    if has_client_id or has_client_secret:
+        missing = "BACKEND_AUTH_CLIENT_SECRET" if has_client_id else "BACKEND_AUTH_CLIENT_ID"
+        present = "BACKEND_AUTH_CLIENT_ID" if has_client_id else "BACKEND_AUTH_CLIENT_SECRET"
+        logger.warning(
+            "Backend auth: %s is set but %s is missing — falling back to forward. "
+            "Set both to auto-select token_exchange or client_credentials.",
+            present,
+            missing,
+        )
 
     logger.info(
         "Backend auth: forward (default — no credentials configured). "

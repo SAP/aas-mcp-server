@@ -1356,6 +1356,32 @@ class TestProbeChain:
                 _probe_strategy()
         assert "skipping auto-detection" in caplog.text
 
+    def test_partial_credentials_only_client_id_emits_warning(self, caplog):
+        """When only CLIENT_ID is set (no SECRET), a warning is logged and forward is returned."""
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_CLIENT_ID: "svc-cid",
+        }, clear=True):
+            with caplog.at_level(logging.WARNING, logger="aas_mcp_server.backend_auth"):
+                result = _probe_strategy()
+        assert result == BACKEND_STRATEGY_FORWARD
+        assert "BACKEND_AUTH_CLIENT_SECRET" in caplog.text
+        assert "missing" in caplog.text
+
+    def test_partial_credentials_only_client_secret_emits_warning(self, caplog):
+        """When only CLIENT_SECRET is set (no ID), a warning is logged and forward is returned."""
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_CLIENT_SECRET: "svc-sec",
+        }, clear=True):
+            with caplog.at_level(logging.WARNING, logger="aas_mcp_server.backend_auth"):
+                result = _probe_strategy()
+        assert result == BACKEND_STRATEGY_FORWARD
+        assert "BACKEND_AUTH_CLIENT_ID" in caplog.text
+        assert "missing" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # Config dataclass from_env() tests
@@ -1452,6 +1478,20 @@ class TestTokenExchangeConfigFromEnv:
         cfg = TokenExchangeConfig.from_env()
         assert cfg.client_id == "oauth-fallback-cid"
 
+    def test_repr_does_not_expose_client_secret(self):
+        from aas_mcp_server.backend_auth import TokenExchangeConfig
+        cfg = TokenExchangeConfig(
+            audience="my-audience",
+            client_id="my-client",
+            client_secret="super-secret",
+            token_endpoint="https://idp.example.com/token",
+            scope=None,
+        )
+        r = repr(cfg)
+        assert "super-secret" not in r
+        assert "[REDACTED]" in r
+        assert "my-client" in r
+
 
 class TestClientCredentialsConfigFromEnv:
     @patch.dict(os.environ, {
@@ -1518,10 +1558,19 @@ class TestClientCredentialsConfigFromEnv:
         with pytest.raises(ValueError, match="BACKEND_AUTH_TOKEN_ENDPOINT"):
             ClientCredentialsConfig.from_env()
 
-
-# ---------------------------------------------------------------------------
-# TokenExchangeStrategy.aclose()
-# ---------------------------------------------------------------------------
+    def test_repr_does_not_expose_client_secret(self):
+        from aas_mcp_server.backend_auth import ClientCredentialsConfig
+        cfg = ClientCredentialsConfig(
+            client_id="my-client",
+            client_secret="super-secret",
+            token_endpoint="https://idp.example.com/token",
+            scope=None,
+            audience=None,
+        )
+        r = repr(cfg)
+        assert "super-secret" not in r
+        assert "[REDACTED]" in r
+        assert "my-client" in r
 
 
 class TestTokenExchangeStrategyClose:
