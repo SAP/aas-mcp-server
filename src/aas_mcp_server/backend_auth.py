@@ -830,6 +830,8 @@ def _probe_strategy() -> str:
     has_client_id = bool(os.getenv(ENV_BACKEND_AUTH_CLIENT_ID, "").strip())
     has_client_secret = bool(os.getenv(ENV_BACKEND_AUTH_CLIENT_SECRET, "").strip())
     has_audience = bool(os.getenv(ENV_BACKEND_AUTH_AUDIENCE, "").strip())
+    has_oauth_client_id = bool(os.getenv(ENV_OAUTH_CLIENT_ID, "").strip())
+    has_oauth_client_secret = bool(os.getenv(ENV_OAUTH_CLIENT_SECRET, "").strip())
 
     logger.debug(
         "Backend auth probe: BACKEND_AUTH_CLIENT_ID=%s BACKEND_AUTH_CLIENT_SECRET=%s BACKEND_AUTH_AUDIENCE=%s",
@@ -863,6 +865,18 @@ def _probe_strategy() -> str:
             present,
             missing,
         )
+
+    # Legacy compatibility: BACKEND_AUTH_AUDIENCE + OAUTH_CLIENT_ID/SECRET used to trigger
+    # token_exchange automatically. Preserve this with a deprecation warning.
+    if has_audience and has_oauth_client_id and has_oauth_client_secret:
+        logger.warning(
+            "Backend auth: deprecated configuration detected — BACKEND_AUTH_AUDIENCE is set "
+            "with OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET but without BACKEND_AUTH_CLIENT_ID/SECRET. "
+            "Auto-selecting token_exchange for backward compatibility. "
+            "Migrate to BACKEND_AUTH_CLIENT_ID + BACKEND_AUTH_CLIENT_SECRET + BACKEND_AUTH_AUDIENCE "
+            "to suppress this warning."
+        )
+        return BACKEND_STRATEGY_TOKEN_EXCHANGE
 
     logger.info(
         "Backend auth: forward (default — no credentials configured). "

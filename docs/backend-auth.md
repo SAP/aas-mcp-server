@@ -75,7 +75,7 @@ AAS_BASE_URL=https://aas.example.com
 
 ---
 
-### `token_exchange` (auto-selected when audience is set)
+### `token_exchange` (auto-selected when client ID, secret, and audience are all set)
 
 Exchanges the inbound user token for a new token scoped to the AAS backend audience, via RFC 8693.
 

@@ -1255,9 +1255,36 @@ class TestBuildBackendTokenProvider:
         provider = build_backend_token_provider()
         assert isinstance(provider, ForwardStrategy)
 
-# ---------------------------------------------------------------------------
-# Probe chain (_probe_strategy) tests
-# ---------------------------------------------------------------------------
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+    }, clear=True)
+    def test_legacy_audience_plus_oauth_creds_auto_selects_token_exchange(self, caplog):
+        """Backward compat: AUDIENCE + OAUTH_CLIENT_ID/SECRET → token_exchange with deprecation warning.
+
+        Old deployments set BACKEND_AUTH_AUDIENCE and relied on OAUTH_* for the credentials.
+        This path is preserved but deprecated; a warning directs operators to migrate.
+        """
+        import logging
+        with caplog.at_level(logging.WARNING, logger="aas_mcp_server.backend_auth"):
+            provider = build_backend_token_provider()
+        assert isinstance(provider, TokenExchangeStrategy)
+        assert provider.client_id == "mcp-client-id"
+        assert "deprecated" in caplog.text.lower()
+
+    @patch.dict(os.environ, {
+        ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+        ENV_BACKEND_AUTH_TOKEN_ENDPOINT: "https://idp.example.com/oauth/token",
+        ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+        ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+    }, clear=True)
+    def test_legacy_audience_does_not_select_client_credentials(self):
+        """AUDIENCE + OAUTH_* routes to token_exchange, not client_credentials."""
+        provider = build_backend_token_provider()
+        assert isinstance(provider, TokenExchangeStrategy)
+        assert not isinstance(provider, ClientCredentialsStrategy)
 
 class TestProbeChain:
     """Unit tests for the _probe_strategy() auto-detection logic.
@@ -1381,6 +1408,46 @@ class TestProbeChain:
         assert result == BACKEND_STRATEGY_FORWARD
         assert "BACKEND_AUTH_CLIENT_ID" in caplog.text
         assert "missing" in caplog.text
+
+    def test_legacy_audience_plus_oauth_creds_selects_token_exchange_with_warning(self, caplog):
+        """Legacy: BACKEND_AUTH_AUDIENCE + OAUTH_CLIENT_ID/SECRET auto-selects token_exchange.
+
+        This preserves backward compatibility for deployments that set audience with
+        OAUTH_* credentials. A deprecation warning is emitted to prompt migration.
+        """
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        }, clear=True):
+            with caplog.at_level(logging.WARNING, logger="aas_mcp_server.backend_auth"):
+                result = _probe_strategy()
+        assert result == BACKEND_STRATEGY_TOKEN_EXCHANGE
+        assert "deprecated" in caplog.text.lower()
+
+    def test_audience_alone_without_oauth_creds_falls_through_to_forward(self):
+        """AUDIENCE set but no CLIENT_ID/SECRET or OAUTH_* → forward (not enough for legacy path)."""
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_AUDIENCE: "https://aas.example.com",
+        }, clear=True):
+            assert _probe_strategy() == BACKEND_STRATEGY_FORWARD
+
+    def test_legacy_audience_does_not_select_client_credentials(self, caplog):
+        """AUDIENCE + OAUTH_* routes to token_exchange, not client_credentials."""
+        import logging
+        from aas_mcp_server.backend_auth import _probe_strategy
+        with patch.dict(os.environ, {
+            ENV_BACKEND_AUTH_AUDIENCE: "backend-client-id",
+            ENV_OAUTH_CLIENT_ID: "mcp-client-id",
+            ENV_OAUTH_CLIENT_SECRET: "mcp-secret",
+        }, clear=True):
+            with caplog.at_level(logging.WARNING, logger="aas_mcp_server.backend_auth"):
+                result = _probe_strategy()
+        assert result == BACKEND_STRATEGY_TOKEN_EXCHANGE
+        assert result != BACKEND_STRATEGY_CLIENT_CREDENTIALS
 
 
 # ---------------------------------------------------------------------------
