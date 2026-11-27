@@ -1835,6 +1835,22 @@ class TestSanitizeEndpointForLogging:
         with pytest.raises(ValueError):
             _sanitize_endpoint_for_logging(bad)
 
+    def test_invalid_port_error_does_not_expose_raw_url(self):
+        url = "https://user:pass@idp.example.com:notaport/oauth/token"
+        with pytest.raises(ValueError) as exc_info:
+            _sanitize_endpoint_for_logging(url)
+        assert url not in str(exc_info.value)
+        assert "pass" not in str(exc_info.value)
+        assert "user" not in str(exc_info.value)
+
+    def test_missing_host_error_does_not_expose_raw_url(self):
+        # URL with userinfo but empty host — parsed.hostname is None
+        url = "https://user:pass@/path"
+        with pytest.raises(ValueError) as exc_info:
+            _sanitize_endpoint_for_logging(url)
+        assert "pass" not in str(exc_info.value)
+        assert url not in str(exc_info.value)
+
 
 class TestStrategiesDoNotLeakRawEndpoint:
     """The request goes to the full endpoint; logs and errors only ever see the sanitized one."""
