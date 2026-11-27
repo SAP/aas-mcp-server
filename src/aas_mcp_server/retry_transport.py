@@ -24,14 +24,22 @@ class RetryTransport(httpx2.AsyncBaseTransport):
     """Wraps a transport with bounded exponential-backoff retries for GET/HEAD.
 
     Retries ConnectError, RemoteProtocolError, and HTTP 502/503/504.
-    Respects Retry-After on 503. Total retry budget prevents runaway waits.
-    Non-idempotent methods (POST/PUT/PATCH/DELETE) are never retried.
+    Respects Retry-After on 503. A monotonic retry budget (wall-clock seconds)
+    bounds the total time spent on backoff sleeps, preventing runaway waits.
+    Non-safe methods (POST/PUT/PATCH/DELETE) are never retried.
+
+    Configuration (via build_async_client / AAS_HTTP_MAX_RETRIES env var):
+        max_retries: Maximum number of retry attempts after the first failure.
+                     Set to 0 to disable retries entirely. Default: 2.
+        budget:      Maximum total seconds to spend sleeping across all retries.
+                     Measured wall-clock from the first retry decision; request
+                     execution time counts against the budget. Default: 30.0.
     """
 
     def __init__(
         self,
         transport: httpx2.AsyncBaseTransport,
-        max_retries: int = 3,
+        max_retries: int = 2,
         budget: float = 30.0,
     ) -> None:
         self._transport = transport
@@ -42,62 +50,66 @@ class RetryTransport(httpx2.AsyncBaseTransport):
         if request.method.upper() not in SAFE_METHODS or self._max_retries == 0:
             return await self._transport.handle_async_request(request)
 
-        budget_remaining = self._budget
+        # Monotonic deadline: accounts for both request execution time and backoff.
+        deadline = time.monotonic() + self._budget
         for attempt in range(self._max_retries + 1):
             try:
                 response = await self._transport.handle_async_request(request)
             except RETRY_EXCEPTIONS as exc:
                 if attempt == self._max_retries:
                     raise
-                delay = self._delay(attempt, budget_remaining)
-                if delay <= 0:
+                delay = self._delay(attempt, deadline)
+                if delay < 0:
                     raise
                 logger.debug(
-                    "Retrying %s %s after %s (attempt %d/%d, budget %.1fs)",
+                    "Retrying %s after %s (attempt %d/%d)",
                     request.method,
-                    request.url.path,
                     type(exc).__name__,
                     attempt + 1,
                     self._max_retries,
-                    budget_remaining,
                 )
                 await asyncio.sleep(delay)
-                budget_remaining -= delay
                 continue
 
             if response.status_code not in RETRY_STATUS_CODES or attempt == self._max_retries:
                 return response
 
-            delay = self._retry_after_delay(response, attempt, budget_remaining)
-            if delay <= 0:
+            delay = self._retry_after_delay(response, attempt, deadline)
+            if delay < 0:
+                # Budget exhausted — return the last response rather than dropping it.
                 return response
             logger.debug(
-                "Retrying %s %s after HTTP %d (attempt %d/%d, budget %.1fs)",
+                "Retrying %s after HTTP %d (attempt %d/%d)",
                 request.method,
-                request.url.path,
                 response.status_code,
                 attempt + 1,
                 self._max_retries,
-                budget_remaining,
             )
+            # Close the discarded response to release its connection back to the pool.
+            await response.aclose()
             await asyncio.sleep(delay)
-            budget_remaining -= delay
 
         return response  # pragma: no cover
 
-    def _delay(self, attempt: int, budget: float) -> float:
+    def _delay(self, attempt: int, deadline: float) -> float:
+        """Backoff delay capped by remaining budget. Negative means over budget."""
         raw = _BASE_DELAY * (2**attempt) + random.uniform(0, 0.1)
-        return min(raw, budget)
+        budget_remaining = deadline - time.monotonic()
+        return min(raw, budget_remaining)
 
     def _retry_after_delay(
-        self, response: httpx2.Response, attempt: int, budget: float
+        self, response: httpx2.Response, attempt: int, deadline: float
     ) -> float:
+        """Delay from Retry-After header, or exponential backoff. Negative means over budget."""
         header = response.headers.get("retry-after")
         if header:
             parsed = _parse_retry_after(header)
             if parsed is not None:
-                return min(parsed, _RETRY_AFTER_MAX_WAIT, budget)
-        return self._delay(attempt, budget)
+                budget_remaining = deadline - time.monotonic()
+                # Cap at the max-wait ceiling and the remaining budget.
+                # A delay of 0 means "retry immediately" — still a valid retry.
+                return min(parsed, _RETRY_AFTER_MAX_WAIT, budget_remaining)
+        return self._delay(attempt, deadline)
 
     async def aclose(self) -> None:
         await self._transport.aclose()
@@ -112,5 +124,5 @@ def _parse_retry_after(value: str) -> float | None:
         dt = email.utils.parsedate_to_datetime(stripped)
         delay = dt.timestamp() - time.time()
         return max(0.0, delay)
-    except Exception:
+    except ValueError:
         return None

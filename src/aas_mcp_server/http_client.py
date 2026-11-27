@@ -360,7 +360,14 @@ def build_async_client(
         )
 
     client_class = TracedAsyncClient if traced else httpx2.AsyncClient
-    http_transport = RetryTransport(httpx2.AsyncHTTPTransport(), max_retries=max_retries)
+    # Use mounts= (not transport=) so httpx2 still resolves HTTP_PROXY / HTTPS_PROXY /
+    # NO_PROXY from the environment. When transport= is set, httpx2 sets
+    # allow_env_proxies=False and silently ignores those variables.
+    # "all://" matches every URL; env-proxy mounts are more specific and win first.
+    http_transport = RetryTransport(
+        httpx2.AsyncHTTPTransport(),
+        max_retries=max_retries,
+    )
     return client_class(
         base_url=base_url,
         headers=headers,
@@ -369,5 +376,5 @@ def build_async_client(
         ),
         timeout=timeout,
         follow_redirects=False,  # Never follow redirects to prevent open-redirect SSRF
-        transport=http_transport,
+        mounts={"all://": http_transport},
     )
