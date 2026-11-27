@@ -329,6 +329,8 @@ async def test_backoff_not_shortened_to_fit_budget():
     assert backend.call_count == 1
 
 
+@pytest.mark.asyncio
+async def test_budget_zero_stops_exception_retry():
     transport, backend = _transport(
         [httpx2.ConnectError("refused"), httpx2.Response(200)],
         max_retries=3,
@@ -554,6 +556,72 @@ async def test_cancelled_error_propagates_during_sleep():
             await transport.handle_async_request(_request())
 
     # Only one request was made before the sleep was cancelled.
+    assert backend.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_during_status_backoff_closes_response():
+    """CancelledError during asyncio.sleep in the HTTP status branch must release the response."""
+    r503 = httpx2.Response(503)
+    transport, backend = _transport([r503, httpx2.Response(200)], max_retries=3)
+
+    async def _raise_cancelled(delay):
+        raise asyncio.CancelledError()
+
+    with patch.object(r503, "aclose", new_callable=AsyncMock) as mock_aclose:
+        with patch("asyncio.sleep", side_effect=_raise_cancelled):
+            with pytest.raises(asyncio.CancelledError):
+                await transport.handle_async_request(_request())
+
+    # Response must be closed to return its connection to the pool.
+    mock_aclose.assert_called_once()
+    assert backend.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deadline_at_exact_boundary_stops_exception_retry():
+    """time.monotonic() == deadline (>= not >) must stop exception retries."""
+    t0 = 1000.0
+    budget = 30.0
+    # post-sleep monotonic returns exactly the deadline value
+    monotonic_values = iter([t0, t0 + 1.0, t0 + budget])
+
+    with patch("aas_mcp_server.retry_transport.time.monotonic", side_effect=monotonic_values):
+        transport, backend = _transport(
+            [httpx2.ConnectError("refused"), httpx2.Response(200)],
+            max_retries=3,
+            budget=budget,
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            with pytest.raises(httpx2.ConnectError):
+                await transport.handle_async_request(_request())
+
+    mock_sleep.assert_called_once()
+    assert backend.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_deadline_at_exact_boundary_stops_status_retry():
+    """time.monotonic() == deadline (>= not >) must stop status retries without closing."""
+    t0 = 1000.0
+    budget = 30.0
+    r503 = httpx2.Response(503)
+    # post-sleep monotonic returns exactly the deadline value
+    monotonic_values = iter([t0, t0 + 1.0, t0 + budget])
+
+    with patch("aas_mcp_server.retry_transport.time.monotonic", side_effect=monotonic_values):
+        transport, backend = _transport(
+            [r503, httpx2.Response(200)],
+            max_retries=3,
+            budget=budget,
+        )
+        with patch.object(r503, "aclose", new_callable=AsyncMock) as mock_aclose:
+            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                resp = await transport.handle_async_request(_request())
+
+    assert resp.status_code == 503
+    mock_sleep.assert_called_once()
+    mock_aclose.assert_not_called()
     assert backend.call_count == 1
 
 

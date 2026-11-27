@@ -79,7 +79,7 @@ class RetryTransport(httpx2.AsyncBaseTransport):
                 )
                 await asyncio.sleep(delay)
                 # Re-check after sleep: deadline may have expired during the wait.
-                if time.monotonic() > deadline:
+                if time.monotonic() >= deadline:
                     raise
                 continue
 
@@ -98,9 +98,14 @@ class RetryTransport(httpx2.AsyncBaseTransport):
                 self._max_retries,
             )
             # Sleep first so the response stays open if the deadline expires during the wait.
-            await asyncio.sleep(delay)
+            try:
+                await asyncio.sleep(delay)
+            except BaseException:
+                # Cancellation or other interruption: release the response before propagating.
+                await response.aclose()
+                raise
             # Re-check after sleep: deadline may have expired during the wait.
-            if time.monotonic() > deadline:
+            if time.monotonic() >= deadline:
                 return response
             # Close the discarded response to release its connection back to the pool.
             await response.aclose()
