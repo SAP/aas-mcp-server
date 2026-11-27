@@ -252,7 +252,30 @@ async def test_deadline_stops_status_retry_when_budget_elapsed_during_request():
 
 
 @pytest.mark.asyncio
-async def test_budget_exhausted_stops_on_exception():
+async def test_backoff_not_shortened_to_fit_budget():
+    """Backoff delay that exceeds the remaining budget skips the retry (not shortened)."""
+    # budget=1.0 → deadline = monotonic() + 1.0
+    # First request completes. _delay computes raw ≈ 0.5 (attempt=0).
+    # We freeze monotonic so budget_remaining = 0.3 < raw ≈ 0.5 → skip retry.
+    t0 = 1000.0
+    # Call sequence: [deadline init, _delay budget check]
+    monotonic_values = iter([t0, t0 + 0.7])  # 1s budget, 0.7s elapsed → 0.3s remaining
+
+    with patch("aas_mcp_server.retry_transport.time.monotonic", side_effect=monotonic_values):
+        transport, backend = _transport(
+            [httpx2.ConnectError("refused"), httpx2.Response(200)],
+            max_retries=3,
+            budget=1.0,
+        )
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            with pytest.raises(httpx2.ConnectError):
+                await transport.handle_async_request(_request())
+
+    # Retry skipped: not called with a shortened delay.
+    mock_sleep.assert_not_called()
+    assert backend.call_count == 1
+
+
     transport, backend = _transport(
         [httpx2.ConnectError("refused"), httpx2.Response(200)],
         max_retries=3,
@@ -387,26 +410,30 @@ async def test_retry_after_httpdate_used_as_delay():
 
 @pytest.mark.asyncio
 async def test_retry_after_capped_at_max_wait():
+    """Retry-After exceeding _RETRY_AFTER_MAX_WAIT skips the retry (not truncated)."""
     transport, backend = _transport([
         httpx2.Response(503, headers={"retry-after": "120"}),  # > 60s cap
         httpx2.Response(200),
-    ], budget=120.0)  # budget > cap so only _RETRY_AFTER_MAX_WAIT kicks in
+    ], budget=120.0)
     with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         resp = await transport.handle_async_request(_request())
-    assert resp.status_code == 200
-    assert mock_sleep.call_args[0][0] == pytest.approx(60.0)
+    # Retry skipped — returns the 503 without retrying.
+    assert resp.status_code == 503
+    mock_sleep.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_retry_after_capped_at_budget():
+async def test_retry_after_exceeds_budget_skips_retry():
+    """Retry-After exceeding remaining budget skips the retry (not truncated)."""
     transport, backend = _transport([
         httpx2.Response(503, headers={"retry-after": "10"}),
         httpx2.Response(200),
     ], budget=5.0)
     with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         resp = await transport.handle_async_request(_request())
-    assert resp.status_code == 200
-    assert mock_sleep.call_args[0][0] == pytest.approx(5.0)
+    # Retry skipped — returns the 503 without retrying.
+    assert resp.status_code == 503
+    mock_sleep.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -618,6 +645,16 @@ def test_build_async_client_negative_max_retries_raises():
             build_async_client("http://localhost:8080")
 
 
+def test_build_async_client_excessive_max_retries_raises():
+    """AAS_HTTP_MAX_RETRIES > MAX_HTTP_MAX_RETRIES is rejected."""
+    from aas_mcp_server.http_client import build_async_client
+    from aas_mcp_server.constants import MAX_HTTP_MAX_RETRIES
+
+    with patch.dict(os.environ, {"AAS_HTTP_MAX_RETRIES": str(MAX_HTTP_MAX_RETRIES + 1)}):
+        with pytest.raises(ValueError, match="AAS_HTTP_MAX_RETRIES"):
+            build_async_client("http://localhost:8080")
+
+
 def test_build_async_client_transport_is_none_for_env_proxy_support():
     """client._transport must be None-free (default) so allow_env_proxies=True."""
     from aas_mcp_server.http_client import build_async_client
@@ -629,3 +666,27 @@ def test_build_async_client_transport_is_none_for_env_proxy_support():
     # httpx2 sets allow_env_proxies = trust_env and transport is None.
     # We pass mounts= not transport=, so _transport is the default AsyncHTTPTransport.
     assert isinstance(client._transport, httpx2.AsyncHTTPTransport)
+
+
+def test_env_proxy_mounts_take_priority_over_retry_transport():
+    """Requests via an env-proxy mount bypass RetryTransport (documented limitation).
+
+    httpx2 adds more-specific proxy mounts (e.g. 'https://') that have higher
+    priority than 'all://'.  Those requests are not retried.
+    """
+    from aas_mcp_server.http_client import build_async_client
+    from aas_mcp_server.retry_transport import RetryTransport
+
+    proxy_url = "http://proxy.example.com:3128"
+    with patch.dict(os.environ, {"HTTPS_PROXY": proxy_url}):
+        client = build_async_client("https://backend.example.com")
+
+    # The more-specific 'https://' mount added by httpx2 should NOT be RetryTransport.
+    https_mount = next(
+        (t for pat, t in client._mounts.items() if pat.pattern == "https://"),
+        None,
+    )
+    # The mount may or may not exist depending on httpx2 version; if it does,
+    # it must not wrap RetryTransport (it's the raw proxy transport).
+    if https_mount is not None:
+        assert not isinstance(https_mount, RetryTransport)

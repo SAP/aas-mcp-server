@@ -42,6 +42,7 @@ from .constants import (
     FASTMCP_EXCLUDED_HEADERS,
     FORWARDED_HEADER_DENYLIST,
     FORWARDED_HEADER_PROXY_PREFIX,
+    MAX_HTTP_MAX_RETRIES,
 )
 from .retry_transport import RetryTransport
 
@@ -358,12 +359,19 @@ def build_async_client(
         raise ValueError(
             f"Invalid value for AAS_HTTP_MAX_RETRIES: {max_retries!r} must be >= 0."
         )
+    if max_retries > MAX_HTTP_MAX_RETRIES:
+        raise ValueError(
+            f"Invalid value for AAS_HTTP_MAX_RETRIES: {max_retries!r} exceeds the maximum of {MAX_HTTP_MAX_RETRIES}."
+        )
 
     client_class = TracedAsyncClient if traced else httpx2.AsyncClient
     # Use mounts= (not transport=) so httpx2 still resolves HTTP_PROXY / HTTPS_PROXY /
     # NO_PROXY from the environment. When transport= is set, httpx2 sets
     # allow_env_proxies=False and silently ignores those variables.
     # "all://" matches every URL; env-proxy mounts are more specific and win first.
+    # Note: requests routed through an env-proxy mount (e.g. HTTPS_PROXY) bypass
+    # RetryTransport because those mounts have higher priority than "all://". Proxy
+    # connections are therefore not retried. Direct connections always use RetryTransport.
     http_transport = RetryTransport(
         httpx2.AsyncHTTPTransport(),
         max_retries=max_retries,
