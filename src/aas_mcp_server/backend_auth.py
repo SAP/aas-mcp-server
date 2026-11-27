@@ -27,10 +27,15 @@ the backend accepts. Four strategies are available:
 - NoneStrategy: adds no Authorization header. For public backends or backends
   that use other auth mechanisms (e.g. mTLS).
 
-The strategy is selected by build_backend_token_provider() based on env vars:
-- No BACKEND_AUTH_* vars set → ForwardStrategy
-- BACKEND_AUTH_AUDIENCE set → TokenExchangeStrategy (auto-detected)
-- BACKEND_AUTH_STRATEGY=<name> → explicit override (required for client_credentials)
+The strategy is selected by build_backend_token_provider() via an ordered probe:
+1. BACKEND_AUTH_STRATEGY set explicitly → honour it, skip probing.
+2. BACKEND_AUTH_CLIENT_ID + BACKEND_AUTH_CLIENT_SECRET + BACKEND_AUTH_AUDIENCE
+   → TokenExchangeStrategy (auto-detected).
+3. BACKEND_AUTH_CLIENT_ID + BACKEND_AUTH_CLIENT_SECRET (no audience)
+   → ClientCredentialsStrategy (auto-detected).
+4. BACKEND_AUTH_AUDIENCE + OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET (legacy)
+   → TokenExchangeStrategy with a deprecation warning; migrate to rule 2.
+5. No credentials configured → ForwardStrategy (default).
 """
 
 import asyncio
@@ -812,7 +817,9 @@ def _probe_strategy() -> str:
       2. BACKEND_AUTH_CLIENT_ID/SECRET + BACKEND_AUTH_AUDIENCE → token_exchange
          (audience distinguishes exchange from plain machine-to-machine).
       3. BACKEND_AUTH_CLIENT_ID/SECRET (no audience) → client_credentials.
-      4. Nothing → forward (shared-IdP default).
+      4. BACKEND_AUTH_AUDIENCE + OAUTH_CLIENT_ID/SECRET (legacy, deprecated) → token_exchange
+         with a deprecation warning; preserved for backward compatibility.
+      5. Nothing → forward (shared-IdP default).
 
     ``none`` is never auto-selected — disabling auth must always be explicit.
 
