@@ -148,6 +148,9 @@ OAUTH_SCOPE_OPENID = "openid"
 # ============================================================================
 SERVER_NAME_FORMAT = "AAS MCP Server ({component_name})"
 DEFAULT_HTTP_TIMEOUT = 30  # seconds
+DEFAULT_HTTP_MAX_RETRIES = 2
+MAX_HTTP_MAX_RETRIES = 10
+ENV_AAS_HTTP_MAX_RETRIES = "AAS_HTTP_MAX_RETRIES"
 DEFAULT_RATE_LIMIT_PER_MINUTE = 60
 DEFAULT_VALIDATE_OUTPUT = True
 DEFAULT_AUDIT_LOG_ENABLED = False
